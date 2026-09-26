@@ -1,0 +1,11 @@
+{
+  "appName": {
+    "message": "DalNow"
+  },
+  "appDescription": {
+    "message": "Retrouvez toutes vos échéances Brightspace au même endroit : elles sont mises à jour lorsque les professeurs modifient les dates et vous recevez des rappels avant la clôture des délais. Dalnow s'occupe de tout."
+  },
+  "actionTitle": {
+    "message": "Ouvrez les échéances de votre cours"
+  }
+}

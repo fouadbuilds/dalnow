@@ -1,0 +1,14 @@
+{
+  "appName": {
+    "message": "DalNow",
+    "description": "Working product name, updates across the app."
+  },
+  "appDescription": {
+    "message": "All your Brightspace deadlines in one place, updated when profs move dates, with reminders before things close.",
+    "description": "Chrome Web Store and chrome://extensions description. 132 characters max."
+  },
+  "actionTitle": {
+    "message": "Open your course deadlines",
+    "description": "Tooltip for the extension icon."
+  }
+}
