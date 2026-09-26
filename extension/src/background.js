@@ -181,6 +181,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) refreshSafely();
 });
 
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ tabId: tab.id });
+});
+
 // Let the side panel ask for an immediate refresh (e.g. a manual "refresh" button).
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "REFRESH_NOW") {
