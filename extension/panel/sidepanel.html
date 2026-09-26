@@ -7,11 +7,22 @@
 </head>
 <body>
   <header>
-    <h1>DalNow</h1>
-    <button id="refreshBtn" title="Refresh now">&#8635;</button>
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" class="brand-icon" />
+      <h1>DalNow</h1>
+    </div>
+    <div class="header-actions">
+      <button id="refreshBtn" title="Refresh now">&#8635;</button>
+      <!-- Settings is a no-op placeholder this phase. The real settings
+           panel (reminder lead-times, per-type and per-course toggles) is a
+           later phase per plan.md. -->
+      <button id="settingsBtn" title="Settings (coming soon)">&#9881;</button>
+    </div>
   </header>
 
   <div id="status" class="status"></div>
+  <div id="summary" class="summary"></div>
+  <div id="filters" class="filters" role="tablist" aria-label="Filter by course"></div>
 
   <main id="list"></main>
 

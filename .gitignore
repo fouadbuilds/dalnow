@@ -42,3 +42,7 @@ logs/
 # temp
 tmp/
 temp/
+
+#log
+CHANGELOG.md
+plan.md

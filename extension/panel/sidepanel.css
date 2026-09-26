@@ -4,9 +4,11 @@
   --fg: #1a1a1a;
   --muted: #6b6b6b;
   --border: #e5e5e5;
-  --overdue: #c0392b;
   --today: #b8860b;
   --card-bg: #f7f7f8;
+  --pill-bg: #efeff1;
+  --pill-active-bg: #1a1a1a;
+  --pill-active-fg: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -16,6 +18,9 @@
     --muted: #9a9a9a;
     --border: #2b2c2f;
     --card-bg: #202124;
+    --pill-bg: #26272b;
+    --pill-active-bg: #eaeaea;
+    --pill-active-fg: #16171a;
   }
 }
 
@@ -37,23 +42,73 @@ header {
   border-bottom: 1px solid var(--border);
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-icon {
+  width: 20px;
+  height: 20px;
+}
+
 header h1 {
   font-size: 16px;
   margin: 0;
 }
 
-#refreshBtn {
+.header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+#refreshBtn,
+#settingsBtn {
   background: none;
   border: none;
   font-size: 16px;
   cursor: pointer;
   color: var(--muted);
+  padding: 4px 6px;
+}
+
+#settingsBtn {
+  opacity: 0.6;
 }
 
 .status {
-  padding: 8px 16px;
+  padding: 8px 16px 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+.summary {
+  padding: 6px 16px 0;
+  font-size: 13px;
+}
+
+.filters {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 16px 4px;
+}
+
+.pill {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--pill-bg);
+  color: var(--fg);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.pill.selected {
+  background: var(--pill-active-bg);
+  color: var(--pill-active-fg);
 }
 
 main {
@@ -69,15 +124,23 @@ main {
 }
 
 .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: var(--card-bg);
   border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 6px;
+}
+
+.item .body {
+  flex: 1;
+  min-width: 0;
   cursor: pointer;
 }
 
-.item:hover {
-  filter: brightness(1.05);
+.item .body:hover .title {
+  text-decoration: underline;
 }
 
 .item .title {
@@ -90,14 +153,64 @@ main {
   color: var(--muted);
 }
 
-.item.overdue .due {
-  color: var(--overdue);
-  font-weight: 600;
+.item .due {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-align: right;
 }
 
-.item.today .due {
-  color: var(--today);
-  font-weight: 600;
+.item .check {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* `checked` is purely cosmetic: strikethrough + dimmed, card stays visible
+   and clickable. Fully reversible via unchecking. */
+.item.checked {
+  opacity: 0.55;
+}
+
+.item.checked .title {
+  text-decoration: line-through;
+}
+
+.item .remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+
+.item .remove:hover {
+  color: var(--fg);
+}
+
+.item.undo {
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.item.undo .undo-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item.undo .undo-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
 }
 
 .empty {
