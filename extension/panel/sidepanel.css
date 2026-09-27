@@ -293,6 +293,33 @@ main {
   background: var(--bg);
 }
 
+.data-section {
+  border-top: 1px solid var(--border);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+
+.data-section .settings-help + .settings-help {
+  margin-top: 8px;
+}
+
+.delete-data-btn {
+  background: transparent;
+  border: 1px solid var(--fg);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  margin: 16px 0 8px;
+  padding: 8px 10px;
+}
+
+.delete-data-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--fg);

@@ -10,6 +10,8 @@ const deadlineViewEl = document.getElementById("deadlineView");
 const settingsViewEl = document.getElementById("settingsView");
 const themeDescriptionEl = document.getElementById("themeDescription");
 const themeOptionEls = [...document.querySelectorAll(".theme-option")];
+const deleteDataBtn = document.getElementById("deleteDataBtn");
+const dataStatusEl = document.getElementById("dataStatus");
 
 const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
 const THEME_DESCRIPTIONS = {
@@ -81,6 +83,34 @@ function closeSettings() {
     if (document.scrollingElement) document.scrollingElement.scrollTop = deadlineScrollTop;
   });
   settingsBtn.focus();
+}
+
+async function deleteLocalData() {
+  const confirmed = window.confirm(
+    "Delete DalNow's saved deadlines, settings, and checked or removed items from this browser? This cannot be undone."
+  );
+  if (!confirmed) return;
+
+  deleteDataBtn.disabled = true;
+  dataStatusEl.textContent = "Deleting local data…";
+  try {
+    // This clears only chrome.storage.local for DalNow. It does not affect
+    // Learn, browser cookies, passwords, or data belonging to other extensions.
+    await chrome.storage.local.clear();
+    cachedDeadlines = [];
+    cachedCourses = [];
+    itemState = {};
+    activeCourseFilter = "all";
+    justRemovedThisSession.clear();
+    applyThemePreference("system");
+    renderFilters();
+    render([], null, null);
+    dataStatusEl.textContent = "Your local DalNow data has been deleted.";
+  } catch {
+    dataStatusEl.textContent = "Couldn't delete local data. Please try again.";
+  } finally {
+    deleteDataBtn.disabled = false;
+  }
 }
 
 function startOfDay(d) {
@@ -488,6 +518,8 @@ backBtn.addEventListener("click", closeSettings);
 for (const option of themeOptionEls) {
   option.addEventListener("click", () => setThemePreference(option.dataset.themePreference));
 }
+
+deleteDataBtn.addEventListener("click", deleteLocalData);
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local") {
