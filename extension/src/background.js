@@ -18,6 +18,7 @@
 const BASE = "https://dal.brightspace.com";
 const ALARM_NAME = "dalnow-refresh";
 const REFRESH_MINUTES = 30;
+let reminderCheckInProgress = null;
 
 // ---- version discovery -----------------------------------------------
 
@@ -83,7 +84,9 @@ async function getDropboxDeadlines(orgUnitId, le) {
     .map((f) => ({
       id: `dropbox-${f.Id}`,
       title: f.Name ?? "Untitled assignment",
-      type: "assignment",
+      // Labs are stored as a distinct reminder type when Learn's folder
+      // title explicitly identifies them; other Dropbox items remain assignments.
+      type: /\blab\b/i.test(f.Name ?? "") ? "lab" : "assignment",
       dueDate: f.DueDate,
       orgUnitId,
       // Confirmed deep-link pattern (verified live against the tenant).
@@ -223,6 +226,81 @@ async function refreshSafely() {
     // the panel can show "couldn't reach Learn" instead of going blank.
     await chrome.storage.local.set({ lastError: String(err.message || err) });
   }
+  await checkDueReminders();
+}
+
+function reminderTime(dueDate, leadDays) {
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return null;
+  const reminder = new Date(due);
+  reminder.setHours(8, 0, 0, 0);
+  reminder.setDate(reminder.getDate() - leadDays);
+  return reminder;
+}
+
+function checkDueReminders() {
+  if (reminderCheckInProgress) return reminderCheckInProgress;
+  reminderCheckInProgress = runReminderCheck().finally(() => {
+    reminderCheckInProgress = null;
+  });
+  return reminderCheckInProgress;
+}
+
+async function runReminderCheck() {
+  try {
+    const stored = await chrome.storage.local.get([
+      "deadlines", "courses", "reminderSettings", "sentReminderKeys",
+    ]);
+    const settings = stored.reminderSettings || {};
+    const typeSettings = settings.types || {};
+    const supportedTypes = new Set(["assignment", "quiz", "lab", "discussion"]);
+    const courseSettings = settings.courses || {};
+    const sent = stored.sentReminderKeys && typeof stored.sentReminderKeys === "object"
+      ? { ...stored.sentReminderKeys }
+      : {};
+    const now = Date.now();
+    let changed = false;
+
+    for (const item of stored.deadlines || []) {
+      if (!supportedTypes.has(item.type) || courseSettings[String(item.orgUnitId)] === false) continue;
+      const type = typeSettings[item.type] || { enabled: true, leadDays: 1 };
+      if (type.enabled === false) continue;
+      const leadDays = Number.isInteger(type.leadDays) ? Math.min(7, Math.max(0, type.leadDays)) : 1;
+      const due = new Date(item.dueDate);
+      if (Number.isNaN(due.getTime()) || due.getTime() <= now) continue;
+      const notifyAt = reminderTime(item.dueDate, leadDays);
+      if (!notifyAt || now < notifyAt.getTime()) continue;
+
+      const key = `${item.id}|${due.toISOString()}`;
+      if (sent[key]) continue;
+      const course = (stored.courses || []).find((entry) => String(entry.orgUnitId) === String(item.orgUnitId));
+      try {
+        await chrome.notifications.create(key, {
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+          title: item.title || "Upcoming deadline",
+          message: `Due ${due.toLocaleString()}`,
+          contextMessage: course?.code || course?.name || "DalNow",
+          priority: 0,
+        });
+        sent[key] = now;
+        changed = true;
+      } catch {
+        // A system-level notification setting can block display. Leave the
+        // reminder unmarked so a later alarm can retry if permission returns.
+      }
+    }
+
+    const keys = Object.keys(sent);
+    if (keys.length > 1000) {
+      keys.sort((a, b) => sent[a] - sent[b]);
+      for (const key of keys.slice(0, keys.length - 1000)) delete sent[key];
+      changed = true;
+    }
+    if (changed) await chrome.storage.local.set({ sentReminderKeys: sent });
+  } catch {
+    // Reminder errors must not prevent deadline refresh or panel operation.
+  }
 }
 
 // ---- lifecycle ------------------------------------------------------------
@@ -249,5 +327,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "REFRESH_NOW") {
     refreshSafely().then(() => sendResponse({ ok: true }));
     return true; // keep the message channel open for the async response
+  }
+  if (msg?.type === "REMINDERS_UPDATED") {
+    checkDueReminders().then(() => sendResponse({ ok: true }));
+    return true;
   }
 });
