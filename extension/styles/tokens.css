@@ -1,0 +1,72 @@
+/* DalNow design tokens. Keep visual values here so themes stay consistent. */
+@import url("../assets/public-sans.css");
+
+:root {
+  color-scheme: dark;
+
+  --brand-black: #242424;
+  --brand-white: #ffffff;
+  --brand-gold: #ffd400;
+
+  --bg: #121416;
+  --surface: #1b1e21;
+  --surface-raised: #22262a;
+  --surface-hover: #2a2f33;
+  --border: #343a3f;
+  --text-primary: #f2f3f4;
+  --text-secondary: #b7bec4;
+  --text-tertiary: #8b949c;
+  --link: #8fc9f0;
+  --link-hover: #b5dcf7;
+  --success: #8ccf9a;
+  --warning: #ffd400;
+  --danger: #f17979;
+  --focus: #ffd400;
+
+  --course-1: #31556b;
+  --course-2: #315f4d;
+  --course-3: #684c2d;
+  --course-4: #654256;
+  --course-5: #414f78;
+  --course-6: #65552d;
+  --course-7: #315f60;
+  --course-8: #704633;
+  --course-9: #46545e;
+  --course-10: #5a4774;
+  --course-foreground: #ffffff;
+  --course-palette: var(--course-1), var(--course-2), var(--course-3),
+    var(--course-4), var(--course-5), var(--course-6), var(--course-7),
+    var(--course-8), var(--course-9), var(--course-10);
+
+  --font-family: "Public Sans", "Segoe UI", Arial, sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-regular: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  --shadow-ambient: 0 5px 18px rgb(0 0 0 / 0.12);
+  --shadow-contact: 0 1px 3px rgb(0 0 0 / 0.22);
+  --shadow-card: var(--shadow-ambient), var(--shadow-contact);
+  --shadow-active: inset 0 1px 2px rgb(0 0 0 / 0.26), 0 1px 2px rgb(255 255 255 / 0.05);
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+}

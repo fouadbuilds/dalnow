@@ -3,52 +3,88 @@ const statusEl = document.getElementById("status");
 const summaryEl = document.getElementById("summary");
 const filtersEl = document.getElementById("filters");
 const refreshBtn = document.getElementById("refreshBtn");
+const refreshStatusEl = document.getElementById("refreshStatus");
 const settingsBtn = document.getElementById("settingsBtn");
 const backBtn = document.getElementById("backBtn");
 const panelTitleEl = document.getElementById("panelTitle");
-const deadlineViewEl = document.getElementById("deadlineView");
+const brandIconEl = document.querySelector(".brand-icon");
+const headerActionsEl = document.querySelector(".header-actions");
+const homeViewEl = document.getElementById("homeView");
 const settingsViewEl = document.getElementById("settingsView");
-const themeDescriptionEl = document.getElementById("themeDescription");
-const themeOptionEls = [...document.querySelectorAll(".theme-option")];
+const typeSettingsEl = document.getElementById("typeReminderSettings");
+const courseSettingsEl = document.getElementById("courseReminderSettings");
+const themeOptionEls = [...document.querySelectorAll(".appearance-option")];
 const deleteDataBtn = document.getElementById("deleteDataBtn");
 const dataStatusEl = document.getElementById("dataStatus");
 
 const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
-const THEME_DESCRIPTIONS = {
-  system: "Match this device's appearance.",
-  light: "Always use the light appearance.",
-  dark: "Always use the dark appearance.",
+const TYPE_ORDER = ["assignment", "quiz", "lab", "discussion"];
+const TYPE_DETAILS = {
+  assignment: { label: "Assignments", singular: "assignment", icon: "assignment" },
+  quiz: { label: "Quizzes", singular: "quiz", icon: "quiz" },
+  lab: { label: "Labs", singular: "lab", icon: "lab" },
+  discussion: { label: "Discussions", singular: "discussion", icon: "discussion" },
+};
+const ICONS = {
+  back: '<path d="m15 18-6-6 6-6"/>',
+  assignment: '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/>',
+  quiz: '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/>',
+  lab: '<path d="M9 3h6M10 3v7l-5 8.2A2.5 2.5 0 0 0 7.1 22h9.8a2.5 2.5 0 0 0 2.1-3.8L14 10V3"/><path d="M8 15h8"/>',
+  discussion: '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',
+  close: '<path d="m18 6-12 12M6 6l12 12"/>',
 };
 
-// Session-scoped only: ids removed during THIS panel session, for the
-// in-place Undo card. Plain in-memory JS state — never written to storage.
-// Closing/reopening the panel clears this set; anything still flagged
-// `removed: true` in storage is then simply absent with no undo.
+// Undo state exists only for the currently open panel session.
 const justRemovedThisSession = new Set();
 
-let activeCourseFilter = "all"; // "all" | orgUnitId (number)
+let activeCourseFilter = "all";
 let cachedDeadlines = [];
 let cachedCourses = [];
-let itemState = {}; // id -> { checked: bool, removed: bool }
+let itemState = {};
 let themePreference = "system";
-let deadlineScrollTop = 0;
+let reminderSettings = defaultReminderSettings();
+let courseColors = new Map();
+let homeScrollTop = 0;
 
-function normaliseThemePreference(value) {
-  return THEME_PREFERENCES.has(value) ? value : "system";
+function defaultReminderSettings() {
+  const types = {};
+  for (const type of TYPE_ORDER) types[type] = { enabled: true, leadDays: 1 };
+  return { types, courses: {} };
+}
+
+function normalizeReminderSettings(value, courses = []) {
+  const defaults = defaultReminderSettings();
+  const source = value && typeof value === "object" ? value : {};
+  const types = {};
+  for (const type of TYPE_ORDER) {
+    const saved = source.types?.[type];
+    const days = Number(saved?.leadDays);
+    types[type] = {
+      enabled: typeof saved?.enabled === "boolean" ? saved.enabled : defaults.types[type].enabled,
+      leadDays: Number.isInteger(days) ? Math.min(7, Math.max(0, days)) : defaults.types[type].leadDays,
+    };
+  }
+  const savedCourses = source.courses && typeof source.courses === "object" ? source.courses : {};
+  const courseSettings = {};
+  for (const course of courses) {
+    const id = String(course.orgUnitId);
+    courseSettings[id] = typeof savedCourses[id] === "boolean" ? savedCourses[id] : true;
+  }
+  return { types, courses: courseSettings };
+}
+
+function icon(name, className = "") {
+  const paths = ICONS[name] || ICONS.assignment;
+  return `<svg${className ? ` class="${className}"` : ""} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 }
 
 function applyThemePreference(value) {
-  themePreference = normaliseThemePreference(value);
-  if (themePreference === "system") {
-    document.documentElement.removeAttribute("data-theme");
-  } else {
-    document.documentElement.dataset.theme = themePreference;
-  }
+  themePreference = THEME_PREFERENCES.has(value) ? value : "system";
+  if (themePreference === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.dataset.theme = themePreference;
   for (const option of themeOptionEls) {
-    const selected = option.dataset.themePreference === themePreference;
-    option.setAttribute("aria-pressed", String(selected));
+    option.setAttribute("aria-pressed", String(option.dataset.themePreference === themePreference));
   }
-  themeDescriptionEl.textContent = THEME_DESCRIPTIONS[themePreference];
 }
 
 async function setThemePreference(value) {
@@ -56,56 +92,61 @@ async function setThemePreference(value) {
   try {
     await chrome.storage.local.set({ themePreference });
   } catch {
-    // Keep the immediate choice for this panel session. A new panel session
-    // falls back to the last successfully stored value (or System).
+    dataStatusEl.textContent = "Appearance will reset if DalNow closes before it can be saved.";
   }
 }
 
 function openSettings() {
-  deadlineScrollTop = document.scrollingElement?.scrollTop ?? 0;
-  deadlineViewEl.hidden = true;
+  homeScrollTop = document.scrollingElement?.scrollTop ?? 0;
+  homeViewEl.hidden = true;
   settingsViewEl.hidden = false;
   panelTitleEl.textContent = "Settings";
-  refreshBtn.hidden = true;
-  settingsBtn.hidden = true;
+  brandIconEl.hidden = true;
+  headerActionsEl.hidden = true;
   backBtn.hidden = false;
+  document.scrollingElement?.scrollTo(0, 0);
   backBtn.focus();
 }
 
 function closeSettings() {
   settingsViewEl.hidden = true;
-  deadlineViewEl.hidden = false;
+  homeViewEl.hidden = false;
   panelTitleEl.textContent = "DalNow";
-  refreshBtn.hidden = false;
-  settingsBtn.hidden = false;
+  brandIconEl.hidden = false;
+  headerActionsEl.hidden = false;
   backBtn.hidden = true;
-  requestAnimationFrame(() => {
-    if (document.scrollingElement) document.scrollingElement.scrollTop = deadlineScrollTop;
-  });
+  requestAnimationFrame(() => document.scrollingElement?.scrollTo(0, homeScrollTop));
   settingsBtn.focus();
 }
 
 async function deleteLocalData() {
   const confirmed = window.confirm(
-    "Delete DalNow's saved deadlines, settings, and checked or removed items from this browser? This cannot be undone."
+    "Delete DalNow's saved deadlines, reminder settings, appearance preference, and checked or removed items? This cannot be undone."
   );
   if (!confirmed) return;
 
   deleteDataBtn.disabled = true;
   dataStatusEl.textContent = "Deleting local data…";
   try {
-    // This clears only chrome.storage.local for DalNow. It does not affect
-    // Learn, browser cookies, passwords, or data belonging to other extensions.
     await chrome.storage.local.clear();
     cachedDeadlines = [];
     cachedCourses = [];
     itemState = {};
+    reminderSettings = defaultReminderSettings();
     activeCourseFilter = "all";
     justRemovedThisSession.clear();
     applyThemePreference("system");
     renderFilters();
     render([], null, null);
-    dataStatusEl.textContent = "Your local DalNow data has been deleted.";
+    renderReminderSettings();
+    dataStatusEl.textContent = "DalNow data deleted. Refreshing your deadlines…";
+    try {
+      await chrome.runtime.sendMessage({ type: "REFRESH_NOW" });
+      await load();
+      dataStatusEl.textContent = "DalNow data deleted. Your deadlines have been refreshed.";
+    } catch {
+      dataStatusEl.textContent = "Local data deleted. Refresh your deadlines when Learn is available.";
+    }
   } catch {
     dataStatusEl.textContent = "Couldn't delete local data. Please try again.";
   } finally {
@@ -113,418 +154,467 @@ async function deleteLocalData() {
   }
 }
 
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+function setReminderSettings(next) {
+  reminderSettings = normalizeReminderSettings(next, cachedCourses);
+  renderReminderSettings();
+  chrome.storage.local.set({ reminderSettings }).then(() => {
+    chrome.runtime.sendMessage({ type: "REMINDERS_UPDATED" }).catch(() => {});
+  }).catch(() => {
+    dataStatusEl.textContent = "Reminder changes couldn't be saved. Please try again.";
+  });
 }
 
-function parseDue(dateStr) {
-  // Fault-tolerant: never throw on malformed/missing dates.
-  try {
-    if (!dateStr) return null;
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return null;
-    return d;
-  } catch {
-    return null;
+function courseLabel(course) {
+  const code = String(course.code || "").trim();
+  const match = code.match(/([A-Z]{2,8})\s*[- ]?(\d{4})/i);
+  if (match) return `${match[1].toUpperCase()} ${match[2]}`;
+  return code || course.name || `Course ${course.orgUnitId}`;
+}
+
+function assignCourseColors() {
+  const palette = Array.from({ length: 10 }, (_, index) => `var(--course-${index + 1})`);
+  const taken = new Set();
+  const colors = new Map();
+  const ordered = [...cachedCourses].sort((a, b) => String(a.orgUnitId).localeCompare(String(b.orgUnitId)));
+  for (const course of ordered) {
+    const key = String(course.orgUnitId);
+    let hash = 0;
+    for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    const preferred = hash % palette.length;
+    let chosen = preferred;
+    for (let offset = 0; offset < palette.length; offset += 1) {
+      const candidate = (preferred + offset) % palette.length;
+      if (!taken.has(candidate)) { chosen = candidate; break; }
+    }
+    taken.add(chosen);
+    colors.set(key, `--course-${chosen + 1}`);
   }
+  courseColors = colors;
+}
+
+function courseChip(course, count = null, pressed = false, isAll = false) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = `course-chip${isAll ? " all-chip" : ""}`;
+  chip.setAttribute("aria-pressed", String(pressed));
+  if (!isAll) chip.style.setProperty("--course-color", `var(${courseColors.get(String(course.orgUnitId)) || "--course-1"})`);
+  const label = isAll ? "All" : courseLabel(course);
+  chip.append(document.createTextNode(label));
+  if (count !== null) {
+    const countEl = document.createElement("span");
+    countEl.className = "course-count";
+    countEl.textContent = `· ${count}`;
+    chip.append(countEl);
+  }
+  if (isAll) chip.addEventListener("click", () => { activeCourseFilter = "all"; renderFilters(); render(); });
+  else chip.addEventListener("click", () => { activeCourseFilter = course.orgUnitId; renderFilters(); render(); });
+  return chip;
+}
+
+function startOfDay(date) {
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
+  return day;
+}
+
+function parseDue(value) {
+  try {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  } catch { return null; }
+}
+
+function getBoundaries(now = new Date()) {
+  const today = startOfDay(now);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayAfterTomorrow = new Date(today); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+  const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
+  const nextWeekEnd = new Date(today); nextWeekEnd.setDate(nextWeekEnd.getDate() + 14);
+  return { today, tomorrow, dayAfterTomorrow, weekEnd, nextWeekEnd };
 }
 
 function groupDeadlines(deadlines) {
-  // Groups per spec: Today, This week, Next week, Later.
-  // No "Overdue" group — past-due items are filtered out in the background
-  // worker before they ever reach storage/UI (deliberate simplification).
   const now = new Date();
-  const today0 = startOfDay(now);
-  const tomorrow0 = new Date(today0);
-  tomorrow0.setDate(tomorrow0.getDate() + 1);
-  const dayAfterTomorrow0 = new Date(today0);
-  dayAfterTomorrow0.setDate(dayAfterTomorrow0.getDate() + 2);
-  const weekEnd = new Date(today0);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-  const nextWeekEnd = new Date(today0);
-  nextWeekEnd.setDate(nextWeekEnd.getDate() + 14);
-
-  const groups = {
-    Today: [],
-    "This week": [],
-    "Next week": [],
-    Later: [],
-  };
-  // Undated/unparseable items go here so they stay visible instead of
-  // crashing the render or vanishing silently.
-  const undated = [];
-
-  for (const d of deadlines) {
-    const due = parseDue(d.dueDate);
-    if (!due) {
-      undated.push(d);
-      continue;
-    }
-    // Defensive: skip anything that slipped through past-due (clock skew,
-    // stale storage) — same intentional rule as the background filter.
-    if (due.getTime() < now.getTime()) continue;
-    if (due < tomorrow0) groups.Today.push(d);
-    else if (due < weekEnd) groups["This week"].push(d);
-    else if (due < nextWeekEnd) groups["Next week"].push(d);
-    else groups.Later.push(d);
+  const boundaries = getBoundaries(now);
+  const groups = { Today: [], "This week": [], "Next week": [], Later: [], _boundaries: boundaries, _undated: [] };
+  for (const item of deadlines) {
+    const due = parseDue(item.dueDate);
+    if (!due) { groups._undated.push(item); continue; }
+    if (due < now) continue;
+    if (due < boundaries.tomorrow) groups.Today.push(item);
+    else if (due < boundaries.weekEnd) groups["This week"].push(item);
+    else if (due < boundaries.nextWeekEnd) groups["Next week"].push(item);
+    else groups.Later.push(item);
   }
-
-  // Expose day boundaries for the summary line without recomputing.
-  groups._boundaries = { today0, tomorrow0, dayAfterTomorrow0 };
-  if (undated.length) groups._undated = undated;
   return groups;
 }
 
-function formatTimeOnly(d) {
-  try {
-    return d.toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
+function formatDate(date, options) {
+  return date.toLocaleDateString(undefined, options);
+}
+
+function formatRange(start, end) {
+  const startMonth = formatDate(start, { month: "short" });
+  const endMonth = formatDate(end, { month: "short" });
+  const startDay = formatDate(start, { day: "numeric" });
+  const endDay = formatDate(end, { day: "numeric" });
+  return startMonth === endMonth ? `${startMonth} ${startDay}–${endDay}` : `${startMonth} ${startDay}–${endMonth} ${endDay}`;
+}
+
+function groupRange(label, boundaries) {
+  if (label === "Today") return formatDate(boundaries.today, { weekday: "short", month: "short", day: "numeric" });
+  if (label === "This week") {
+    const end = new Date(boundaries.weekEnd); end.setDate(end.getDate() - 1);
+    return formatRange(boundaries.tomorrow, end);
   }
-}
-
-function formatDue(dateStr) {
-  // Always date + time together, by priority per spec:
-  //   "Today, [time]" / "Tomorrow, [time]" /
-  //   "[Mon short], [day], [time]" e.g. "Sep 24, 11:59 PM".
-  // All API due dates are UTC ISO strings; the Date constructor converts
-  // to the user's local time zone for both grouping and display.
-  const d = parseDue(dateStr);
-  if (!d) return "Date unavailable";
-  try {
-    const now = new Date();
-    const today0 = startOfDay(now);
-    const tomorrow0 = new Date(today0);
-    tomorrow0.setDate(tomorrow0.getDate() + 1);
-    const dayAfter0 = new Date(today0);
-    dayAfter0.setDate(dayAfter0.getDate() + 2);
-    const time = formatTimeOnly(d);
-    if (d >= today0 && d < tomorrow0) return `Today, ${time}`;
-    if (d >= tomorrow0 && d < dayAfter0) return `Tomorrow, ${time}`;
-    const datePart = d.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-    return `${datePart}, ${time}`;
-  } catch {
-    return "Date unavailable";
+  if (label === "Next week") {
+    const end = new Date(boundaries.nextWeekEnd); end.setDate(end.getDate() - 1);
+    return formatRange(boundaries.weekEnd, end);
   }
+  return "";
 }
 
-function courseUrl(orgUnitId) {
-  return `https://dal.brightspace.com/d2l/home/${orgUnitId}`;
+function formatDue(value) {
+  const due = parseDue(value);
+  if (!due) return "Date unavailable";
+  const boundaries = getBoundaries();
+  const time = due.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (due >= boundaries.today && due < boundaries.tomorrow) return `Today, ${time}`;
+  if (due >= boundaries.tomorrow && due < boundaries.dayAfterTomorrow) return `Tomorrow, ${time}`;
+  return `${formatDate(due, { month: "short", day: "numeric" })}, ${time}`;
 }
 
-function itemUrl(item) {
-  // Prefer the per-type deep link built in the background worker
-  // (assignment → dropbox pattern, quiz → quiz pattern, both confirmed).
-  // Discussion falls back to the course homepage (pattern unverified).
-  if (item.url) return item.url;
-  return courseUrl(item.orgUnitId);
+function activeDeadlines() {
+  return cachedDeadlines.filter((item) => !(itemState[item.id]?.removed));
 }
 
-function shortCourseLabel(course) {
-  return course.code || course.name || `Course ${course.orgUnitId}`;
-}
-
-function renderSummary(groups) {
-  // Plain sentence derived from already-grouped data, no separate logic.
+function renderSummary() {
+  const groups = groupDeadlines(activeDeadlines());
   const todayCount = groups.Today.length;
-  let tomorrowCount = 0;
-  try {
-    const { tomorrow0, dayAfterTomorrow0 } = groups._boundaries;
-    tomorrowCount = groups["This week"].filter((item) => {
-      const due = parseDue(item.dueDate);
-      return due && due >= tomorrow0 && due < dayAfterTomorrow0;
-    }).length;
-  } catch {
-    tomorrowCount = 0;
-  }
-
-  if (todayCount === 0 && tomorrowCount === 0) {
-    summaryEl.textContent = "Nothing due today.";
-    return;
-  }
-  const plural = (n) => (n === 1 ? "deadline" : "deadlines");
-  let text = "";
-  if (todayCount > 0) {
-    text = `You have ${todayCount} ${plural(todayCount)} due today`;
-  }
-  if (tomorrowCount > 0) {
-    text += todayCount > 0
-      ? `, and ${tomorrowCount} due tomorrow.`
-      : `You have ${tomorrowCount} ${plural(tomorrowCount)} due tomorrow.`;
-    if (todayCount > 0) text += ".";
-  } else if (todayCount > 0) {
-    text += ".";
-  }
-  summaryEl.textContent = text;
+  const tomorrowCount = groups["This week"].filter((item) => {
+    const due = parseDue(item.dueDate);
+    return due && due >= groups._boundaries.tomorrow && due < groups._boundaries.dayAfterTomorrow;
+  }).length;
+  if (!todayCount && !tomorrowCount) { summaryEl.textContent = "Nothing due today."; return; }
+  const sentence = [];
+  if (todayCount) sentence.push(`${todayCount} ${todayCount === 1 ? "deadline" : "deadlines"} due today`);
+  if (tomorrowCount) sentence.push(`${tomorrowCount} due by tomorrow`);
+  summaryEl.textContent = `You have ${sentence.join(" and ")}.`;
 }
 
 function renderFilters() {
-  filtersEl.innerHTML = "";
-  const makeBtn = (label, value, selected) => {
-    const btn = document.createElement("button");
-    btn.className = "pill" + (selected ? " selected" : "");
-    btn.textContent = label;
-    btn.setAttribute("role", "tab");
-    btn.setAttribute("aria-selected", selected ? "true" : "false");
-    btn.addEventListener("click", () => {
-      activeCourseFilter = value;
-      renderFilters();
-      render();
-    });
-    return btn;
-  };
-
-  filtersEl.appendChild(makeBtn("All", "all", activeCourseFilter === "all"));
+  filtersEl.replaceChildren();
+  assignCourseColors();
+  const counts = new Map();
+  for (const item of activeDeadlines()) counts.set(String(item.orgUnitId), (counts.get(String(item.orgUnitId)) || 0) + 1);
+  const allCount = activeDeadlines().length;
+  filtersEl.append(courseChip(null, allCount, activeCourseFilter === "all", true));
   for (const course of cachedCourses) {
-    filtersEl.appendChild(
-      makeBtn(
-        shortCourseLabel(course),
-        course.orgUnitId,
-        activeCourseFilter === course.orgUnitId
-      )
-    );
+    filtersEl.append(courseChip(course, counts.get(String(course.orgUnitId)) || 0, activeCourseFilter === course.orgUnitId));
   }
 }
 
 function getVisibleDeadlines() {
-  // Apply persistent `removed` flag + active course filter.
   return cachedDeadlines.filter((item) => {
-    const state = itemState[item.id];
-    if (state && state.removed) {
-      // Removed items stay hidden, except: while the id is in this
-      // session's just-removed set we render an Undo card in its place
-      // (handled in render(), so keep the item in the pipeline).
-      if (!justRemovedThisSession.has(item.id)) return false;
-    }
-    if (activeCourseFilter !== "all" && item.orgUnitId !== activeCourseFilter) {
-      return false;
-    }
-    return true;
+    if (itemState[item.id]?.removed && !justRemovedThisSession.has(item.id)) return false;
+    return activeCourseFilter === "all" || String(item.orgUnitId) === String(activeCourseFilter);
   });
 }
 
-function render(deadlines, lastRefreshed, lastError) {
-  if (deadlines !== undefined) cachedDeadlines = deadlines || [];
-  listEl.innerHTML = "";
+function courseForItem(item) {
+  return cachedCourses.find((course) => String(course.orgUnitId) === String(item.orgUnitId)) || {
+    orgUnitId: item.orgUnitId, code: item.courseCode, name: item.courseName,
+  };
+}
 
-  if (lastError) {
-    statusEl.textContent = `Couldn't reach Learn — showing last saved list. (${lastError})`;
-  } else if (lastRefreshed) {
-    try {
-      statusEl.textContent = `Updated ${new Date(lastRefreshed).toLocaleTimeString()}`;
-    } catch {
-      statusEl.textContent = "";
-    }
-  } else {
-    statusEl.textContent = "";
-  }
-
-  const visible = getVisibleDeadlines();
-
-  if (!visible || visible.length === 0) {
-    summaryEl.textContent =
-      cachedDeadlines.length === 0
-        ? "Nothing due today."
-        : "No deadlines match this filter.";
-    if (cachedDeadlines.length === 0) {
-      listEl.innerHTML = `<div class="empty">No deadlines found yet. If you just installed this, click refresh, and make sure you're logged into Learn.</div>`;
-    }
-    return;
-  }
-
-  const groups = groupDeadlines(
-    visible.filter((item) => {
-      const state = itemState[item.id];
-      return !(state && state.removed);
-    })
-  );
-  // Undo cards are rendered in place — collect them separately so the
-  // layout position matches the original card's group.
-  const undoItems = visible.filter(
-    (item) => itemState[item.id] && itemState[item.id].removed
-  );
-  renderSummary(groups);
-
-  const order = ["Today", "This week", "Next week", "Later"];
-  for (const label of order) {
-    const items = groups[label];
-    // Interleave any session-removed undo cards that belonged to this group
-    // by original sort position (deadlines are pre-sorted by due date).
-    const groupUndo = undoItems.filter((u) => {
-      const g = groupDeadlines([u]);
-      return g[label] && g[label].length === 1;
-    });
-    const combined = [...items];
-    // Simplest stable approach: undo cards for this group render at the top
-    // of their original group so layout doesn't jump pages.
-    if (items.length === 0 && groupUndo.length === 0) continue;
-
-    const heading = document.createElement("div");
-    heading.className = "group-title";
-    heading.textContent = label;
-    listEl.appendChild(heading);
-
-    for (const item of groupUndo) {
-      listEl.appendChild(renderUndoCard(item));
-    }
-    for (const item of items) {
-      listEl.appendChild(renderCard(item));
-    }
-  }
-
-  if (groups._undated && groups._undated.length) {
-    const heading = document.createElement("div");
-    heading.className = "group-title";
-    heading.textContent = "No date";
-    listEl.appendChild(heading);
-    for (const item of groups._undated) {
-      listEl.appendChild(renderCard(item));
-    }
+function safeItemUrl(item) {
+  const fallback = `https://dal.brightspace.com/d2l/home/${encodeURIComponent(item.orgUnitId)}`;
+  try {
+    const url = new URL(item.url || fallback);
+    return url.protocol === "https:" && url.hostname === "dal.brightspace.com" ? url.href : fallback;
+  } catch {
+    return fallback;
   }
 }
 
+function addGroup(parent, label, items, boundaries) {
+  if (!items.length) return;
+  const section = document.createElement("section");
+  section.className = "deadline-group";
+  const heading = document.createElement("h2");
+  heading.className = "group-title";
+  heading.textContent = label;
+  const range = groupRange(label, boundaries);
+  if (range) {
+    const rangeEl = document.createElement("span");
+    rangeEl.className = "group-range";
+    rangeEl.textContent = `· ${range}`;
+    heading.append(rangeEl);
+  }
+  section.append(heading);
+  for (const item of items) {
+    section.append(itemState[item.id]?.removed ? renderUndoCard(item) : renderCard(item));
+  }
+  parent.append(section);
+}
+
+function render(deadlines, _lastRefreshed, lastError) {
+  if (deadlines !== undefined) cachedDeadlines = deadlines || [];
+  listEl.replaceChildren();
+  statusEl.textContent = lastError ? "Couldn't reach Learn. Showing your last saved deadlines." : "";
+  renderSummary();
+
+  const visible = getVisibleDeadlines();
+  if (!visible.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = cachedDeadlines.length === 0
+      ? "No deadlines found yet. Refresh and make sure you're logged into Learn."
+      : "No deadlines match this course filter.";
+    listEl.append(empty);
+    return;
+  }
+
+  const groups = groupDeadlines(visible);
+  for (const label of ["Today", "This week", "Next week", "Later"]) {
+    addGroup(listEl, label, groups[label], groups._boundaries);
+  }
+  addGroup(listEl, "No date", groups._undated, groups._boundaries);
+}
+
 function renderCard(item) {
-  const state = itemState[item.id] || {};
-  const el = document.createElement("div");
-  el.className = "item" + (state.checked ? " checked" : "");
+  const card = document.createElement("article");
+  card.className = `item${itemState[item.id]?.checked ? " checked" : ""}`;
+  const course = courseForItem(item);
+  const courseColor = courseColors.get(String(item.orgUnitId)) || "--course-1";
+  const type = TYPE_DETAILS[item.type] ? item.type : "assignment";
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
   checkbox.className = "check";
-  checkbox.checked = !!state.checked;
-  checkbox.setAttribute("aria-label", "Mark as done");
-  checkbox.addEventListener("click", (e) => e.stopPropagation());
-  checkbox.addEventListener("change", async () => {
-    await setItemState(item.id, { checked: checkbox.checked });
-  });
+  checkbox.checked = Boolean(itemState[item.id]?.checked);
+  checkbox.setAttribute("aria-label", `Mark ${item.title} complete`);
+  checkbox.addEventListener("click", (event) => event.stopPropagation());
+  checkbox.addEventListener("change", async () => setItemState(item.id, { checked: checkbox.checked }));
 
-  const body = document.createElement("div");
-  body.className = "body";
-  body.innerHTML = `
-    <div class="title">${escapeHtml(item.title)}</div>
-    <div class="meta">${escapeHtml(item.courseCode || item.courseName || "")} · ${escapeHtml(item.type || "")}</div>
-  `;
-  body.addEventListener("click", () => {
-    // No `tabs` permission per spec — open via a plain anchor/new tab.
-    window.open(itemUrl(item), "_blank", "noopener");
-  });
+  const content = document.createElement("div");
+  content.className = "item-content";
+  const topLine = document.createElement("div");
+  topLine.className = "item-topline";
+  const coursePill = document.createElement("span");
+  coursePill.className = "item-course";
+  coursePill.style.setProperty("--course-color", `var(${courseColor})`);
+  coursePill.textContent = courseLabel(course);
+  coursePill.title = course.name || courseLabel(course);
+  const typeBadge = document.createElement("span");
+  typeBadge.className = "item-type";
+  typeBadge.setAttribute("aria-label", TYPE_DETAILS[type].singular);
+  typeBadge.innerHTML = `${icon(TYPE_DETAILS[type].icon)}<span class="item-type-label">${TYPE_DETAILS[type].singular}</span>`;
+  topLine.append(coursePill, typeBadge);
+
+  const title = document.createElement("a");
+  title.className = "item-title";
+  title.textContent = item.title || "Untitled deadline";
+  title.href = safeItemUrl(item);
+  title.target = "_blank";
+  title.rel = "noopener noreferrer";
+  content.append(topLine, title);
 
   const due = document.createElement("div");
-  due.className = "due";
+  due.className = "item-due";
   due.textContent = formatDue(item.dueDate);
 
   const removeBtn = document.createElement("button");
-  removeBtn.className = "remove";
-  removeBtn.textContent = "✕";
-  removeBtn.title = "Remove";
-  removeBtn.setAttribute("aria-label", "Remove this deadline");
-  removeBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
+  removeBtn.className = "remove-button";
+  removeBtn.type = "button";
+  removeBtn.innerHTML = icon("close");
+  removeBtn.title = "Remove deadline";
+  removeBtn.setAttribute("aria-label", `Remove ${item.title} from DalNow`);
+  removeBtn.addEventListener("click", async () => {
     justRemovedThisSession.add(item.id);
     await setItemState(item.id, { removed: true });
   });
-
-  el.appendChild(checkbox);
-  el.appendChild(body);
-  el.appendChild(due);
-  el.appendChild(removeBtn);
-  return el;
+  card.append(checkbox, content, due, removeBtn);
+  return card;
 }
 
 function renderUndoCard(item) {
-  const el = document.createElement("div");
-  el.className = "item undo";
+  const card = document.createElement("article");
+  card.className = "item undo";
   const label = document.createElement("span");
   label.className = "undo-label";
-  label.textContent = `Removed "${item.title}"`;
-  const btn = document.createElement("button");
-  btn.className = "undo-btn";
-  btn.textContent = "Undo";
-  btn.addEventListener("click", async () => {
+  label.textContent = `Removed “${item.title}”`;
+  const button = document.createElement("button");
+  button.className = "undo-button";
+  button.type = "button";
+  button.textContent = "Undo";
+  button.addEventListener("click", async () => {
     justRemovedThisSession.delete(item.id);
     await setItemState(item.id, { removed: false });
   });
-  el.appendChild(label);
-  el.appendChild(btn);
-  return el;
+  card.append(label, button);
+  return card;
 }
 
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str ?? "";
-  return div.innerHTML;
+function renderReminderSettings() {
+  typeSettingsEl.replaceChildren();
+  for (const type of TYPE_ORDER) {
+    const details = TYPE_DETAILS[type];
+    const setting = reminderSettings.types[type];
+    const card = document.createElement("section");
+    card.className = "setting-card type-setting";
+    const head = document.createElement("div");
+    head.className = "type-setting-head";
+    head.innerHTML = icon(details.icon);
+    const name = document.createElement("span");
+    name.className = "type-setting-name";
+    name.textContent = details.label;
+    head.append(name);
+
+    const toggle = makeToggle(`reminder-${type}`, `Reminders for ${details.label.toLowerCase()}`, setting.enabled, "var(--brand-gold)");
+    toggle.input.addEventListener("change", () => {
+      const next = structuredClone(reminderSettings);
+      next.types[type].enabled = toggle.input.checked;
+      setReminderSettings(next);
+    });
+
+    const label = document.createElement("label");
+    label.className = "lead-label";
+    label.htmlFor = `lead-${type}`;
+    label.textContent = setting.leadDays === 0 ? "Morning of" : `${setting.leadDays} ${setting.leadDays === 1 ? "day" : "days"} before`;
+    const range = document.createElement("input");
+    range.className = "lead-range";
+    range.id = `lead-${type}`;
+    range.type = "range";
+    range.min = "0";
+    range.max = "7";
+    range.step = "1";
+    range.value = String(setting.leadDays);
+    range.disabled = !setting.enabled;
+    range.setAttribute("aria-label", `Days before ${details.singular} due date`);
+    range.addEventListener("input", () => {
+      label.textContent = Number(range.value) === 0 ? "Morning of" : `${range.value} ${range.value === "1" ? "day" : "days"} before`;
+    });
+    range.addEventListener("change", () => {
+      const next = structuredClone(reminderSettings);
+      next.types[type].leadDays = Number(range.value);
+      setReminderSettings(next);
+    });
+    card.append(head, toggle.wrapper, label, range);
+    typeSettingsEl.append(card);
+  }
+
+  courseSettingsEl.replaceChildren();
+  if (!cachedCourses.length) {
+    const note = document.createElement("p");
+    note.className = "data-copy";
+    note.textContent = "Your enrolled courses will appear here after DalNow refreshes.";
+    courseSettingsEl.append(note);
+    return;
+  }
+  for (const course of cachedCourses) {
+    const id = String(course.orgUnitId);
+    const row = document.createElement("div");
+    row.className = "setting-card course-setting";
+    const chip = document.createElement("span");
+    chip.className = "course-chip";
+    const deadlineCount = activeDeadlines().filter((item) => String(item.orgUnitId) === id).length;
+    chip.append(document.createTextNode(courseLabel(course)));
+    const count = document.createElement("span");
+    count.className = "course-count";
+    count.textContent = `· ${deadlineCount}`;
+    chip.append(count);
+    chip.title = course.name || courseLabel(course);
+    chip.style.setProperty("--course-color", `var(${courseColors.get(id) || "--course-1"})`);
+    const toggle = makeToggle(`course-${id}`, `Reminders for ${courseLabel(course)}`, reminderSettings.courses[id] !== false, `var(${courseColors.get(id) || "--course-1"})`);
+    toggle.input.addEventListener("change", () => {
+      const next = structuredClone(reminderSettings);
+      next.courses[id] = toggle.input.checked;
+      setReminderSettings(next);
+    });
+    row.append(chip, toggle.wrapper);
+    courseSettingsEl.append(row);
+  }
+}
+
+function makeToggle(id, label, checked, color) {
+  const wrapper = document.createElement("label");
+  wrapper.className = "toggle";
+  wrapper.style.setProperty("--toggle-color", color);
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.id = id;
+  input.checked = checked;
+  input.setAttribute("role", "switch");
+  input.setAttribute("aria-label", label);
+  const track = document.createElement("span");
+  track.className = "toggle-track";
+  wrapper.append(input, track);
+  return { wrapper, input };
 }
 
 async function setItemState(id, patch) {
-  const current = itemState[id] || {};
-  itemState[id] = { ...current, ...patch };
-  try {
-    await chrome.storage.local.set({ itemState });
-  } catch {
-    // Storage failure shouldn't break the panel render.
-  }
+  itemState[id] = { ...(itemState[id] || {}), ...patch };
+  try { await chrome.storage.local.set({ itemState }); } catch { /* Keep this panel responsive if storage is temporarily unavailable. */ }
   render();
 }
 
 async function load() {
   const stored = await chrome.storage.local.get([
-    "deadlines",
-    "courses",
-    "itemState",
-    "lastRefreshed",
-    "lastError",
-    "themePreference",
+    "deadlines", "courses", "itemState", "lastRefreshed", "lastError",
+    "themePreference", "reminderSettings",
   ]);
   cachedDeadlines = stored.deadlines || [];
   cachedCourses = stored.courses || deriveCourses(cachedDeadlines);
   itemState = stored.itemState || {};
   applyThemePreference(stored.themePreference);
+  reminderSettings = normalizeReminderSettings(stored.reminderSettings, cachedCourses);
   renderFilters();
   render(cachedDeadlines, stored.lastRefreshed, stored.lastError);
+  renderReminderSettings();
 }
 
 function deriveCourses(deadlines) {
-  // Fallback if `courses` was stored by an older worker version.
-  const map = new Map();
-  for (const d of deadlines || []) {
-    if (!map.has(d.orgUnitId)) {
-      map.set(d.orgUnitId, {
-        orgUnitId: d.orgUnitId,
-        name: d.courseName,
-        code: d.courseCode,
-      });
-    }
+  const courses = new Map();
+  for (const item of deadlines || []) {
+    const key = String(item.orgUnitId);
+    if (!courses.has(key)) courses.set(key, { orgUnitId: item.orgUnitId, name: item.courseName, code: item.courseCode });
   }
-  return [...map.values()];
+  return [...courses.values()];
 }
 
 refreshBtn.addEventListener("click", async () => {
-  statusEl.textContent = "Refreshing…";
-  await chrome.runtime.sendMessage({ type: "REFRESH_NOW" });
-  await load();
+  refreshBtn.classList.add("is-refreshing");
+  refreshStatusEl.textContent = "Refreshing…";
+  statusEl.textContent = "";
+  try {
+    await chrome.runtime.sendMessage({ type: "REFRESH_NOW" });
+    await load();
+  } catch {
+    statusEl.textContent = "Couldn't reach Learn. Showing your last saved deadlines.";
+  } finally {
+    refreshBtn.classList.remove("is-refreshing");
+    refreshStatusEl.textContent = "";
+  }
 });
 
 settingsBtn.addEventListener("click", openSettings);
 backBtn.addEventListener("click", closeSettings);
-
 for (const option of themeOptionEls) {
   option.addEventListener("click", () => setThemePreference(option.dataset.themePreference));
 }
-
 deleteDataBtn.addEventListener("click", deleteLocalData);
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local") {
-    if (changes.themePreference) applyThemePreference(changes.themePreference.newValue);
-    if (changes.deadlines || changes.lastError || changes.courses) load();
+  if (area !== "local") return;
+  if (changes.themePreference) applyThemePreference(changes.themePreference.newValue);
+  if (changes.deadlines || changes.lastError || changes.courses || changes.itemState || changes.reminderSettings) {
+    if (changes.deadlines && !changes.deadlines.newValue) {
+      activeCourseFilter = "all";
+      justRemovedThisSession.clear();
+    }
+    load();
   }
 });
 

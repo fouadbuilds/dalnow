@@ -2,48 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DalNow</title>
-  <link rel="stylesheet" href="sidepanel.css" />
+  <link rel="stylesheet" href="../styles/tokens.css" />
+  <link rel="stylesheet" href="../styles/styles.css" />
 </head>
 <body>
-  <header>
-    <button id="backBtn" class="back-btn" type="button" hidden aria-label="Back to deadlines">← Back</button>
-    <div class="brand">
+  <header class="app-header">
+    <button id="backBtn" class="back-button" type="button" hidden aria-label="Back to Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+    </button>
+    <div id="brand" class="brand">
       <img src="../icons/icon48.png" alt="" class="brand-icon" />
       <h1 id="panelTitle">DalNow</h1>
     </div>
+    <div id="headerSpacer" class="header-spacer" hidden></div>
     <div class="header-actions">
-      <button id="refreshBtn" type="button" title="Refresh now" aria-label="Refresh deadlines">&#8635;</button>
-      <button id="settingsBtn" type="button" title="Settings" aria-label="Open settings">&#9881;</button>
+      <span id="refreshStatus" class="refresh-status" aria-live="polite"></span>
+      <button id="refreshBtn" class="icon-button" type="button" title="Refresh now" aria-label="Refresh deadlines">
+        <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4.8 9a7.5 7.5 0 0 1 12.6-2L20 12M4 17v-5h5"/><path d="M19.2 15a7.5 7.5 0 0 1-12.6 2L4 12"/></svg>
+      </button>
+      <button id="settingsBtn" class="icon-button" type="button" title="Settings" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z"/></svg>
+      </button>
     </div>
   </header>
 
-  <div id="deadlineView">
-    <div id="status" class="status"></div>
-    <div id="summary" class="summary"></div>
-    <div id="filters" class="filters" role="tablist" aria-label="Filter by course"></div>
+  <main id="homeView" class="home-view">
+    <p id="status" class="status-line" role="status"></p>
+    <div id="summary" class="summary-box"></div>
+    <nav id="filters" class="filters" aria-label="Filter deadlines by course"></nav>
+    <div id="list"></div>
+    <footer class="app-footer">Not affiliated with Brightspace or Dalhousie University.</footer>
+  </main>
 
-    <main id="list"></main>
-  </div>
+  <main id="settingsView" class="settings-view" hidden>
+    <section class="settings-section" aria-labelledby="remindersHeading">
+      <h2 id="remindersHeading" class="section-title">Reminders</h2>
+      <div id="typeReminderSettings"></div>
+    </section>
 
-  <section id="settingsView" class="settings-view" hidden aria-labelledby="panelTitle">
-    <h2>Appearance</h2>
-    <p class="settings-help">Choose how DalNow looks on this device.</p>
-    <div class="theme-control" role="group" aria-label="Appearance preference">
-      <button class="theme-option" type="button" data-theme-preference="system" aria-pressed="true">System</button>
-      <button class="theme-option" type="button" data-theme-preference="light" aria-pressed="false">Light</button>
-      <button class="theme-option" type="button" data-theme-preference="dark" aria-pressed="false">Dark</button>
-    </div>
-    <p id="themeDescription" class="settings-help" aria-live="polite"></p>
+    <section class="settings-section" aria-labelledby="courseRemindersHeading">
+      <h2 id="courseRemindersHeading" class="section-title">I want reminders for these courses</h2>
+      <div id="courseReminderSettings"></div>
+    </section>
+
+    <section class="settings-section" aria-labelledby="appearanceHeading">
+      <h2 id="appearanceHeading" class="section-title">Appearance</h2>
+      <div class="appearance-control" role="group" aria-label="Appearance preference">
+        <button class="appearance-option" type="button" data-theme-preference="light" aria-pressed="false">Light</button>
+        <button class="appearance-option" type="button" data-theme-preference="dark" aria-pressed="false">Dark</button>
+        <button class="appearance-option" type="button" data-theme-preference="system" aria-pressed="true">System</button>
+      </div>
+    </section>
 
     <section class="data-section" aria-labelledby="dataHeading">
-      <h2 id="dataHeading">My data</h2>
-      <p class="settings-help">DalNow reads deadlines through the Learn session already open in this browser. It never asks for or stores your password.</p>
-      <p class="settings-help">Your deadline list, settings, and checked or removed items stay only in this browser.</p>
-      <button id="deleteDataBtn" class="delete-data-btn" type="button">Delete my data</button>
-      <p id="dataStatus" class="settings-help" role="status"></p>
+      <h2 id="dataHeading" class="section-title">My data</h2>
+      <button id="deleteDataBtn" class="delete-data-button" type="button">Delete my data</button>
+      <p class="data-copy">DalNow reads deadlines through the Learn session already open in this browser. It never asks for or stores your password.</p>
+      <p class="data-copy">Your deadline list, settings, and checked or removed items stay only in this browser.</p>
+      <p id="dataStatus" class="data-status" role="status"></p>
     </section>
-  </section>
+
+    <footer class="settings-footer">
+      <p>Found a bug? Send the debug report via Instagram @fouaden_ and he’ll buy Subway 🙂</p>
+      <p id="notificationSupportNote">Notifications only show while Chrome is open. To keep getting them after closing every Chrome window, turn on <strong>“Continue running background apps”</strong> in Chrome settings.</p>
+    </footer>
+  </main>
 
   <script src="sidepanel.js"></script>
 </body>
