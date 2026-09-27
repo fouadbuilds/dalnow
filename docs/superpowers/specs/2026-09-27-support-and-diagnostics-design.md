@@ -8,9 +8,16 @@ reminder, storage, and course-filter behavior.
 
 ## Signed-out recovery
 
-When the last live refresh fails with the existing `NOT_LOGGED_IN` outcome and
-there are no cached deadlines to show, Home renders a clay card instead of the
-generic empty message.
+The service worker persists a typed `liveStatus` after every refresh. Its
+`outcome` is one of `success`, `not-signed-in`, `network-error`, or `api-error`.
+`getApiVersions`, `apiGet`, and every per-course getter must convert 401/403 to
+`not-signed-in` and propagate that outcome rather than silently treating an
+auth failure as an empty endpoint. A successful refresh overwrites the status
+with `success`; it never leaves an earlier failure active. `REFRESH_NOW`
+responds with that latest outcome.
+
+When the latest outcome is `not-signed-in` and there are no cached deadlines to
+show, Home renders a clay card instead of the generic empty message.
 
 The card contains:
 
@@ -53,6 +60,10 @@ Each reminder slider exposes its destination below the track: `7` at the left,
 descending to `0`, and **Morning of** at the right. The visual direction is
 reversed so the displayed scale agrees with the existing `0 = Morning of`
 storage semantics. The live label above the track remains the selected value.
+The stored value, `aria-valuenow`, and label retain that existing semantic:
+left/pointer at 7 saves `7`; right/pointer at Morning of saves `0`; Arrow keys
+must adjust and announce the same values without a visually reversed but
+semantically inverted result.
 
 Settings is ordered as follows:
 
@@ -75,20 +86,35 @@ Settings is ordered as follows:
 `extension/options/` gains `debug.html` and `debug.js`; its styles remain in
 `extension/styles/` and reuse the extension's tokens. The manifest declares
 this as the extension options page. Selecting **Report a bug** from Settings
-opens that page.
+opens that page. The expandable Chrome help card says exactly:
 
-The page presents the exact supplied structure: Report a Bug; Debug report;
-Instagram guidance; a last-live-read summary; **Copy debug info**; and the
-non-affiliation footer. Copy uses the clipboard API and reports success/failure
-without navigating away.
+**Keep reminders coming after you close Chrome**
 
-The service worker records a bounded `liveDebug` object for each refresh. It
-contains only operational metadata: `kind`, extension version, base origin,
-run/outcome, start/finish timestamps, success counts, failure count, endpoint
-template, status, duration, and transport context. It does **not** include
-course names or codes, deadline titles, Brightspace user identity, request
-cookies, authorization headers, response bodies, response shapes, or full URLs
-with user data. The options page serializes that object with JSON indentation;
+1. Open the three-dot menu at the top right of Chrome.
+2. Choose Settings, then System in the left sidebar.
+3. Turn on **Continue running background apps when Google Chrome is closed.**
+
+The page presents this structure and literal labels: **Report a Bug**;
+**Debug report**; “Send the debug report via Instagram @fouaden_ and he might
+buy you a Subway :). Your Brightspace info is not in the report (you can check
+it first by pasting it somewhere and Ctrl+F your info).”; a **Last live read**
+summary; **Copy debug info**; and “Not affiliated with Brightspace or Dalhousie
+University.” Copy uses the clipboard API and reports success/failure without
+navigating away.
+
+The service worker overwrites one bounded `liveDebug` object per refresh; it
+does not accumulate diagnostic history. Its allowed keys are exactly `kind`
+(`dalnow-live-debug`), `version`, `base` (`https://dal.brightspace.com` only),
+`run` (`refresh`), `outcome` (the four symbolic outcomes above), `startedAt`,
+`finishedAt`, `counts` (`courses` and `deadlines` numeric/null only),
+`failedRequests` (number), `requests` (bounded list), and `lastLiveRead`
+(derived user-safe summary only). Each request has only `endpoint` (one of the
+fixed symbolic templates, such as `/d2l/api/lp/{v}/users/whoami`), `status`
+(number/null), `ms` (number), and `via` (`worker` only). Errors are represented
+only by the top-level outcome; error messages, exception names/stacks,
+interpolated paths, org-unit IDs, URLs/query strings, headers/cookies, response
+bodies, response shapes, user identity, course names/codes, and deadline titles
+are prohibited. The options page serializes this object with JSON indentation;
 the user can inspect it before sharing.
 
 ## Verification
@@ -99,7 +125,13 @@ the user can inspect it before sharing.
 - Home and Settings show the reduced motion, heading range, title hover,
   course badge, footer, slider scale, and icon corrections in both themes.
 - Notification instructions expand and collapse without losing keyboard focus.
+- Verify both slider endpoints and an intermediate value by pointer and
+  keyboard, confirming the visual scale, stored value, and live label agree.
 - Options page opens, its summary agrees with stored `liveDebug`, and copied
   JSON contains no course/title/identity/body fields.
+- Exercise 401/403 sign-out, a non-auth network/API failure, and a per-course
+  auth failure. In every copied result, inspect for literal course/org-unit IDs,
+  URLs/query strings, headers/cookies, response/error bodies, and stack/error
+  text. Confirm only the current report is stored after repeated refreshes.
 - Confirm the new page and local stylesheet/font links resolve in an unpacked
   extension.
