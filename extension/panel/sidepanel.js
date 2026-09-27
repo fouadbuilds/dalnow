@@ -4,6 +4,19 @@ const summaryEl = document.getElementById("summary");
 const filtersEl = document.getElementById("filters");
 const refreshBtn = document.getElementById("refreshBtn");
 const settingsBtn = document.getElementById("settingsBtn");
+const backBtn = document.getElementById("backBtn");
+const panelTitleEl = document.getElementById("panelTitle");
+const deadlineViewEl = document.getElementById("deadlineView");
+const settingsViewEl = document.getElementById("settingsView");
+const themeDescriptionEl = document.getElementById("themeDescription");
+const themeOptionEls = [...document.querySelectorAll(".theme-option")];
+
+const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
+const THEME_DESCRIPTIONS = {
+  system: "Match this device's appearance.",
+  light: "Always use the light appearance.",
+  dark: "Always use the dark appearance.",
+};
 
 // Session-scoped only: ids removed during THIS panel session, for the
 // in-place Undo card. Plain in-memory JS state — never written to storage.
@@ -15,6 +28,60 @@ let activeCourseFilter = "all"; // "all" | orgUnitId (number)
 let cachedDeadlines = [];
 let cachedCourses = [];
 let itemState = {}; // id -> { checked: bool, removed: bool }
+let themePreference = "system";
+let deadlineScrollTop = 0;
+
+function normaliseThemePreference(value) {
+  return THEME_PREFERENCES.has(value) ? value : "system";
+}
+
+function applyThemePreference(value) {
+  themePreference = normaliseThemePreference(value);
+  if (themePreference === "system") {
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.dataset.theme = themePreference;
+  }
+  for (const option of themeOptionEls) {
+    const selected = option.dataset.themePreference === themePreference;
+    option.setAttribute("aria-pressed", String(selected));
+  }
+  themeDescriptionEl.textContent = THEME_DESCRIPTIONS[themePreference];
+}
+
+async function setThemePreference(value) {
+  applyThemePreference(value);
+  try {
+    await chrome.storage.local.set({ themePreference });
+  } catch {
+    // Keep the immediate choice for this panel session. A new panel session
+    // falls back to the last successfully stored value (or System).
+  }
+}
+
+function openSettings() {
+  deadlineScrollTop = document.scrollingElement?.scrollTop ?? 0;
+  deadlineViewEl.hidden = true;
+  settingsViewEl.hidden = false;
+  panelTitleEl.textContent = "Settings";
+  refreshBtn.hidden = true;
+  settingsBtn.hidden = true;
+  backBtn.hidden = false;
+  backBtn.focus();
+}
+
+function closeSettings() {
+  settingsViewEl.hidden = true;
+  deadlineViewEl.hidden = false;
+  panelTitleEl.textContent = "DalNow";
+  refreshBtn.hidden = false;
+  settingsBtn.hidden = false;
+  backBtn.hidden = true;
+  requestAnimationFrame(() => {
+    if (document.scrollingElement) document.scrollingElement.scrollTop = deadlineScrollTop;
+  });
+  settingsBtn.focus();
+}
 
 function startOfDay(d) {
   const x = new Date(d);
@@ -384,10 +451,12 @@ async function load() {
     "itemState",
     "lastRefreshed",
     "lastError",
+    "themePreference",
   ]);
   cachedDeadlines = stored.deadlines || [];
   cachedCourses = stored.courses || deriveCourses(cachedDeadlines);
   itemState = stored.itemState || {};
+  applyThemePreference(stored.themePreference);
   renderFilters();
   render(cachedDeadlines, stored.lastRefreshed, stored.lastError);
 }
@@ -413,12 +482,17 @@ refreshBtn.addEventListener("click", async () => {
   await load();
 });
 
-// No-op placeholder this phase per plan.md.
-settingsBtn.addEventListener("click", () => {});
+settingsBtn.addEventListener("click", openSettings);
+backBtn.addEventListener("click", closeSettings);
+
+for (const option of themeOptionEls) {
+  option.addEventListener("click", () => setThemePreference(option.dataset.themePreference));
+}
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && (changes.deadlines || changes.lastError || changes.courses)) {
-    load();
+  if (area === "local") {
+    if (changes.themePreference) applyThemePreference(changes.themePreference.newValue);
+    if (changes.deadlines || changes.lastError || changes.courses) load();
   }
 });
 

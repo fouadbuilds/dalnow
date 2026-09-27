@@ -24,6 +24,32 @@
   }
 }
 
+/* Manual choices intentionally follow the system media query, so they take
+   precedence while System can simply remove the data-theme marker. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b6b6b;
+  --border: #e5e5e5;
+  --card-bg: #f7f7f8;
+  --pill-bg: #efeff1;
+  --pill-active-bg: #1a1a1a;
+  --pill-active-fg: #ffffff;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16171a;
+  --fg: #eaeaea;
+  --muted: #9a9a9a;
+  --border: #2b2c2f;
+  --card-bg: #202124;
+  --pill-bg: #26272b;
+  --pill-active-bg: #eaeaea;
+  --pill-active-fg: #16171a;
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -73,8 +99,14 @@ header h1 {
   padding: 4px 6px;
 }
 
-#settingsBtn {
-  opacity: 0.6;
+.back-btn {
+  border: none;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  margin-left: -6px;
+  padding: 6px;
 }
 
 .status {
@@ -218,4 +250,51 @@ main {
   text-align: center;
   padding: 24px 8px;
   font-size: 13px;
+}
+
+.settings-view {
+  padding: 20px 16px;
+}
+
+.settings-view h2 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.settings-help {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.theme-control {
+  display: flex;
+  background: var(--pill-bg);
+  border-radius: 8px;
+  gap: 2px;
+  margin: 16px 0 10px;
+  padding: 3px;
+}
+
+.theme-option {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 4px;
+}
+
+.theme-option[aria-pressed="true"] {
+  background: var(--bg);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
 }

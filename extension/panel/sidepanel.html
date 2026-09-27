@@ -7,24 +7,35 @@
 </head>
 <body>
   <header>
+    <button id="backBtn" class="back-btn" type="button" hidden aria-label="Back to deadlines">← Back</button>
     <div class="brand">
       <img src="../icons/icon48.png" alt="" class="brand-icon" />
-      <h1>DalNow</h1>
+      <h1 id="panelTitle">DalNow</h1>
     </div>
     <div class="header-actions">
-      <button id="refreshBtn" title="Refresh now">&#8635;</button>
-      <!-- Settings is a no-op placeholder this phase. The real settings
-           panel (reminder lead-times, per-type and per-course toggles) is a
-           later phase per plan.md. -->
-      <button id="settingsBtn" title="Settings (coming soon)">&#9881;</button>
+      <button id="refreshBtn" type="button" title="Refresh now" aria-label="Refresh deadlines">&#8635;</button>
+      <button id="settingsBtn" type="button" title="Settings" aria-label="Open settings">&#9881;</button>
     </div>
   </header>
 
-  <div id="status" class="status"></div>
-  <div id="summary" class="summary"></div>
-  <div id="filters" class="filters" role="tablist" aria-label="Filter by course"></div>
+  <div id="deadlineView">
+    <div id="status" class="status"></div>
+    <div id="summary" class="summary"></div>
+    <div id="filters" class="filters" role="tablist" aria-label="Filter by course"></div>
 
-  <main id="list"></main>
+    <main id="list"></main>
+  </div>
+
+  <section id="settingsView" class="settings-view" hidden aria-labelledby="panelTitle">
+    <h2>Appearance</h2>
+    <p class="settings-help">Choose how DalNow looks on this device.</p>
+    <div class="theme-control" role="group" aria-label="Appearance preference">
+      <button class="theme-option" type="button" data-theme-preference="system" aria-pressed="true">System</button>
+      <button class="theme-option" type="button" data-theme-preference="light" aria-pressed="false">Light</button>
+      <button class="theme-option" type="button" data-theme-preference="dark" aria-pressed="false">Dark</button>
+    </div>
+    <p id="themeDescription" class="settings-help" aria-live="polite"></p>
+  </section>
 
   <script src="sidepanel.js"></script>
 </body>
