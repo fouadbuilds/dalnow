@@ -126,7 +126,7 @@ the user can inspect it before sharing.
 
 ## Verification
 
-- Signed-out card appears only for `NOT_LOGGED_IN` plus no cached deadlines;
+- Signed-out card appears only for `not-signed-in` plus no cached deadlines;
   both actions work.
 - Generic empty and cached-error states remain distinct.
 - Home and Settings show the reduced motion, heading range, title hover,
