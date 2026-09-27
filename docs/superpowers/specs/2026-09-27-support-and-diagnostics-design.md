@@ -107,11 +107,18 @@ does not accumulate diagnostic history. Its allowed keys are exactly `kind`
 (`dalnow-live-debug`), `version`, `base` (`https://dal.brightspace.com` only),
 `run` (`refresh`), `outcome` (the four symbolic outcomes above), `startedAt`,
 `finishedAt`, `counts` (`courses` and `deadlines` numeric/null only),
-`failedRequests` (number), `requests` (bounded list), and `lastLiveRead`
-(derived user-safe summary only). Each request has only `endpoint` (one of the
-fixed symbolic templates, such as `/d2l/api/lp/{v}/users/whoami`), `status`
-(number/null), `ms` (number), and `via` (`worker` only). Errors are represented
-only by the top-level outcome; error messages, exception names/stacks,
+`failedRequests` (number), `requests` (at most 50 entries), and
+`lastLiveRead` (an object with only `at` as an ISO timestamp/null and `message`
+as one of these fixed templates: “Read {courses} courses and {deadlines}
+deadlines.”, “Brightspace was not signed in.”, “DALnow could not complete the
+last read.”). Each request has only `endpoint` (one of exactly
+`/d2l/api/versions/`, `/d2l/api/lp/{v}/users/whoami`,
+`/d2l/api/lp/{v}/enrollments/myenrollments/`,
+`/d2l/api/le/{v}/{orgUnitId}/dropbox/folders/`,
+`/d2l/api/le/{v}/{orgUnitId}/quizzes/`, or
+`/d2l/api/le/{v}/{orgUnitId}/discussions/`), `status` (number/null), `ms`
+(number), and `via` (`worker` only). Errors are represented only by the
+top-level outcome; error messages, exception names/stacks,
 interpolated paths, org-unit IDs, URLs/query strings, headers/cookies, response
 bodies, response shapes, user identity, course names/codes, and deadline titles
 are prohibited. The options page serializes this object with JSON indentation;
@@ -129,8 +136,9 @@ the user can inspect it before sharing.
   keyboard, confirming the visual scale, stored value, and live label agree.
 - Options page opens, its summary agrees with stored `liveDebug`, and copied
   JSON contains no course/title/identity/body fields.
-- Exercise 401/403 sign-out, a non-auth network/API failure, and a per-course
-  auth failure. In every copied result, inspect for literal course/org-unit IDs,
+- Exercise 401/403 sign-out resulting in the persisted `not-signed-in` outcome,
+  a non-auth network/API failure, and a per-course auth failure. In every copied
+  result, inspect for literal course/org-unit IDs,
   URLs/query strings, headers/cookies, response/error bodies, and stack/error
   text. Confirm only the current report is stored after repeated refreshes.
 - Confirm the new page and local stylesheet/font links resolve in an unpacked
