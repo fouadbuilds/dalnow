@@ -16,23 +16,26 @@ edge at lower-right, and a bright inset edge at upper-left. Dark mode remains
 available through the existing Light / Dark / System preference and uses the
 same material model under a dim indigo lamp.
 
-DalNow's existing Wingtip Black, Cloud White, and Beak Gold remain the brand
-palette. Gold is deliberately scarce: the mark, primary controls, the active
-filter, section underlines, and high-attention date treatment. Course colors
-retain their existing identity and remain reserved for course chips and pills.
-They will be expressed as lighter clay/highlighter surfaces rather than
-introducing unrelated brand colors.
+DalNow's exact existing brand token values stay unchanged: `--brand-black`
+`#242424`, `--brand-white` `#ffffff`, and `--brand-gold` `#ffd400`. Gold is
+deliberately scarce: the mark, primary controls, the active filter, and section
+underlines. The existing ten `--course-*` token values also stay unchanged and
+remain reserved for course chips and pills. Only the neutral clay ground,
+surface, and shadow tokens change; no course colour is remapped or lightened.
 
 ## Typography and assets
 
-- Bundle Schibsted Grotesk locally as the display and interface typeface:
-  wordmark, headings, course chips, primary labels, and deadline titles.
-- Bundle DM Sans locally as the body typeface: supporting copy, dates,
-  metadata, settings guidance, and status text.
-- Replace the Public Sans asset and its associated local licence/style files.
-  Font files stay inside `extension/assets` and are referenced only from
-  extension-local CSS, preserving offline operation and extension CSP
-  compatibility.
+- Bundle variable, normal-style WOFF2 files for Schibsted Grotesk (weight range
+  400–800) and DM Sans (weight range 400–700), with the matching OFL licence
+  files, inside `extension/assets`. Register them with `@font-face` under the
+  exact family names `"Schibsted Grotesk"` and `"DM Sans"`, respectively,
+  with `font-display: swap` and a sensible local system fallback.
+- Use Schibsted Grotesk for the wordmark, headings, course chips, controls,
+  primary labels, and deadline titles. Use DM Sans for supporting copy, dates,
+  metadata, settings guidance, status text, and every ordinary paragraph.
+- Remove the Public Sans asset, its CSS, and its licence file only after their
+  replacements are linked locally. No remote font request or external CSS
+  import is allowed.
 
 ## Component treatment
 
@@ -49,10 +52,11 @@ introducing unrelated brand colors.
 - Give group headings a heavy display face and gold underline rather than a
   divider. Date-range text remains secondary.
 - Make each deadline a large soft card: carved square checkbox, course pill,
-  type icon and label, bold linked title, and right-aligned due state. Urgent
-  or changed dates use the existing danger/gold emphasis while ordinary dates
-  use ink. The entire card remains static on hover; controls and the title
-  retain their discrete interaction states.
+  type icon and label, bold linked title, and right-aligned due state. Preserve
+  the current uniform due-date emphasis and formatting; this redesign does not
+  infer or create an "urgent" or "changed" deadline state. The entire card
+  remains static on hover; controls and the title retain their discrete
+  interaction states.
 
 ### Settings
 
@@ -73,6 +77,9 @@ introducing unrelated brand colors.
 and dark semantic roles, clay shadow recipes, type families, spacing, radii,
 motion, and course colors. `extension/styles/styles.css` consumes those tokens
 for every component. Values are not duplicated ad hoc in component rules.
+The obsolete, non-loaded `extension/panel/sidepanel.css` is removed so only the
+two stylesheets under `extension/styles` define panel appearance. Neither may
+reference the former Public Sans CSS or font asset.
 
 The current `data-theme` preference behavior remains untouched. System uses
 the OS media query; explicit Light and Dark selections continue to override it.
@@ -102,3 +109,7 @@ build step, or external font request is introduced.
   slider, course toggle, appearance, and Delete my data flows.
 - Confirm narrow side-panel layouts remain readable and no controls are hidden
   or horizontally clipped.
+- Capture reference-comparison screenshots for Home and Settings in Light and
+  Dark at a normal side-panel width and at <=340px. They must visibly show the
+  floating/non-flat header, raised and recessed clay lighting, due-state reflow
+  at the narrow width, and readable focus contrast in both themes.
