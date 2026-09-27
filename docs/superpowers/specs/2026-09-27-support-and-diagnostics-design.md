@@ -96,7 +96,7 @@ opens that page. The expandable Chrome help card says exactly:
 
 The page presents this structure and literal labels: **Report a Bug**;
 **Debug report**; “Send the debug report via Instagram @fouaden_ and he might
-buy you a Subway :). Your Brightspace info is not in the report (you can check
+buy you  Subway :). Your Brightspace info is not in the report (you can check
 it first by pasting it somewhere and Ctrl+F your info).”; a **Last live read**
 summary; **Copy debug info**; and “Not affiliated with Brightspace or Dalhousie
 University.” Copy uses the clipboard API and reports success/failure without

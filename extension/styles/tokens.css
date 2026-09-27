@@ -47,10 +47,10 @@
   --brand-black: #242424;
   --brand-white: #ffffff;
   --brand-gold: #ffd400;
-  --course-1: #2563eb;
-  --course-2: #059669;
-  --course-3: #d97706;
-  --course-4: #7c3aed;
+  --course-1: #007aff;
+  --course-2: #4cd964;
+  --course-3: #ff9500;
+  --course-4: #5956d6;
   --course-5: #db2777;
   --course-6: #b45309;
   --course-7: #0f766e;
@@ -69,7 +69,7 @@
   --ink-faint: #7c85a2;
   --rule: rgb(80 98 150 / 14%);
   --rule-strong: rgb(80 98 150 / 26%);
-  --danger: #c93a31;
+  --danger: #ff3b30;
   --danger-wash: #fbe3e0;
   --success: #2c7449;
   --focus: #1f2440;
