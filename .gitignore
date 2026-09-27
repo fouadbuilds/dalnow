@@ -44,5 +44,7 @@ tmp/
 temp/
 
 #log
-CHANGELOG.md
-plan.md
+changelog.md
+plan.md 
+*.superpowers
+docs/
