@@ -1,4 +1,4 @@
-// DalNow background service worker
+// DALnow background service worker
 //
 // Everything here does GET-only calls against dal.brightspace.com's Valence
 // API, riding the session cookie you already have from being logged into
@@ -16,19 +16,60 @@
 // break the next time Dal upgrades Brightspace.
 
 const BASE = "https://dal.brightspace.com";
-const ALARM_NAME = "dalnow-refresh";
+const ALARM_NAME = "DALnow-refresh";
 const REFRESH_MINUTES = 30;
 let reminderCheckInProgress = null;
 
 // ---- version discovery -----------------------------------------------
 
 let cachedVersions = null;
+const DEBUG_REQUEST_LIMIT = 50;
+let currentDebug = null;
+
+function refreshError(outcome) {
+  const error = new Error(outcome);
+  error.outcome = outcome;
+  return error;
+}
+
+function startDebug() {
+  currentDebug = { startedAt: new Date().toISOString(), requests: [], failedRequests: 0 };
+}
+
+function recordRequest(endpoint, status, startedAt) {
+  if (!currentDebug || currentDebug.requests.length >= DEBUG_REQUEST_LIMIT) return;
+  currentDebug.requests.push({ endpoint, status: Number.isInteger(status) ? status : null, ms: Date.now() - startedAt, via: "worker" });
+  if (!Number.isInteger(status) || status >= 400) currentDebug.failedRequests += 1;
+}
+
+function safeLiveStatus(outcome, counts = null) {
+  const finishedAt = new Date().toISOString();
+  const message = outcome === "success"
+    ? `Read ${counts.courses} courses and ${counts.deadlines} deadlines.`
+    : outcome === "not-signed-in"
+      ? "Brightspace was not signed in."
+      : "DALnow could not complete the last read.";
+  return {
+    liveStatus: { outcome, finishedAt },
+    liveDebug: {
+      kind: "dalnow-live-debug",
+      version: chrome.runtime.getManifest().version,
+      base: BASE,
+      run: "refresh",
+      outcome,
+      startedAt: currentDebug?.startedAt || finishedAt,
+      finishedAt,
+      counts: counts ? { courses: counts.courses, deadlines: counts.deadlines } : null,
+      failedRequests: currentDebug?.failedRequests || 0,
+      requests: currentDebug?.requests || [],
+      lastLiveRead: { at: finishedAt, message },
+    },
+  };
+}
 
 async function getApiVersions() {
   if (cachedVersions) return cachedVersions;
-  const res = await fetch(`${BASE}/d2l/api/versions/`, { credentials: "include" });
-  if (!res.ok) throw new Error(`versions check failed: ${res.status}`);
-  const list = await res.json();
+  const list = await apiGet("/d2l/api/versions/", "/d2l/api/versions/");
   const find = (code) => {
     const entry = list.find((p) => p.ProductCode === code);
     if (!entry) throw new Error(`no version info for product "${code}"`);
@@ -40,15 +81,23 @@ async function getApiVersions() {
 
 // ---- low-level fetch helper --------------------------------------------
 
-async function apiGet(path) {
-  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
+async function apiGet(path, endpoint = path) {
+  const startedAt = Date.now();
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, { credentials: "include" });
+  } catch {
+    recordRequest(endpoint, null, startedAt);
+    throw refreshError("network-error");
+  }
+  recordRequest(endpoint, res.status, startedAt);
   if (res.status === 401 || res.status === 403) {
-    throw new Error("NOT_LOGGED_IN");
+    throw refreshError("not-signed-in");
   }
   if (!res.ok) {
-    throw new Error(`API error ${res.status} on ${path}`);
+    throw refreshError("api-error");
   }
-  return res.json();
+  try { return await res.json(); } catch { throw refreshError("api-error"); }
 }
 
 // ---- course discovery ---------------------------------------------------
@@ -58,10 +107,15 @@ async function getActiveCourses() {
   // myenrollments paginates; for a first pass we take one page (200 is the
   // default page size for most tenants) since a student's active course
   // count is always far below that.
-  const data = await apiGet(`/d2l/api/lp/${lp}/enrollments/myenrollments/`);
+  const data = await apiGet(`/d2l/api/lp/${lp}/enrollments/myenrollments/`, "/d2l/api/lp/{v}/enrollments/myenrollments/");
   const items = data.Items || data; // shape varies slightly by version
   return items
-    .filter((e) => e.OrgUnit && e.OrgUnit.Type && e.OrgUnit.Type.Code === "Course Offering")
+    .filter(
+      (e) =>
+        e.OrgUnit &&
+        e.OrgUnit.Type &&
+        e.OrgUnit.Type.Code === "Course Offering",
+    )
     .map((e) => ({
       orgUnitId: e.OrgUnit.Id,
       name: e.OrgUnit.Name,
@@ -74,8 +128,9 @@ async function getActiveCourses() {
 async function getDropboxDeadlines(orgUnitId, le) {
   let folders;
   try {
-    folders = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/dropbox/folders/`);
+    folders = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/dropbox/folders/`, "/d2l/api/le/{v}/{orgUnitId}/dropbox/folders/");
   } catch (e) {
+    if (e?.outcome === "not-signed-in") throw e;
     return []; // course may have dropbox disabled entirely
   }
   if (!Array.isArray(folders)) return [];
@@ -99,9 +154,10 @@ async function getDropboxDeadlines(orgUnitId, le) {
 async function getQuizDeadlines(orgUnitId, le) {
   let quizzes;
   try {
-    const data = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/quizzes/`);
+    const data = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/quizzes/`, "/d2l/api/le/{v}/{orgUnitId}/quizzes/");
     quizzes = data.Objects || data;
   } catch (e) {
+    if (e?.outcome === "not-signed-in") throw e;
     return []; // course may have quizzes disabled entirely
   }
   // Quiz response shape is unverified (assumed similar to dropbox with
@@ -135,7 +191,7 @@ async function getQuizDeadlines(orgUnitId, le) {
 async function getDiscussionDeadlines(orgUnitId, le) {
   let topics;
   try {
-    const forums = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/discussions/`);
+    const forums = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/discussions/`, "/d2l/api/le/{v}/{orgUnitId}/discussions/");
     // Discussion response shape + per-item deep-link pattern are UNVERIFIED
     // (current courses don't use discussions, so never confirmed live).
     // Keep the fetch — future courses might use it — but fall back to the
@@ -143,6 +199,7 @@ async function getDiscussionDeadlines(orgUnitId, le) {
     const list = Array.isArray(forums) ? forums : forums.Objects || [];
     topics = list.flatMap((f) => (f && f.Topics) || []);
   } catch (e) {
+    if (e?.outcome === "not-signed-in") throw e;
     return [];
   }
   if (!Array.isArray(topics)) return [];
@@ -180,13 +237,15 @@ async function refreshAll() {
         getQuizDeadlines(course.orgUnitId, le),
         getDiscussionDeadlines(course.orgUnitId, le),
       ]);
-      const items = [...assignments, ...quizzes, ...discussions].map((item) => ({
-        ...item,
-        courseName: course.name,
-        courseCode: course.code,
-      }));
+      const items = [...assignments, ...quizzes, ...discussions].map(
+        (item) => ({
+          ...item,
+          courseName: course.name,
+          courseCode: course.code,
+        }),
+      );
       return items;
-    })
+    }),
   );
 
   const allDeadlines = perCourse
@@ -208,25 +267,23 @@ async function refreshAll() {
     })
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
-  await chrome.storage.local.set({
-    deadlines: allDeadlines,
-    courses,
-    lastRefreshed: new Date().toISOString(),
-    lastError: null,
-  });
-
-  return allDeadlines;
+  return { deadlines: allDeadlines, courses };
 }
 
 async function refreshSafely() {
+  startDebug();
+  let status;
   try {
-    await refreshAll();
+    const { deadlines, courses } = await refreshAll();
+    status = safeLiveStatus("success", { deadlines: deadlines.length, courses: courses.length });
+    await chrome.storage.local.set({ deadlines, courses, lastRefreshed: status.liveStatus.finishedAt, lastError: null, ...status });
   } catch (err) {
-    // Keep whatever we last successfully read; just record the error so
-    // the panel can show "couldn't reach Learn" instead of going blank.
-    await chrome.storage.local.set({ lastError: String(err.message || err) });
+    const outcome = ["not-signed-in", "network-error", "api-error"].includes(err?.outcome) ? err.outcome : "api-error";
+    status = safeLiveStatus(outcome);
+    await chrome.storage.local.set({ lastError: outcome, ...status });
   }
   await checkDueReminders();
+  return status.liveStatus;
 }
 
 function reminderTime(dueDate, leadDays) {
@@ -249,23 +306,33 @@ function checkDueReminders() {
 async function runReminderCheck() {
   try {
     const stored = await chrome.storage.local.get([
-      "deadlines", "courses", "reminderSettings", "sentReminderKeys",
+      "deadlines",
+      "courses",
+      "reminderSettings",
+      "sentReminderKeys",
     ]);
     const settings = stored.reminderSettings || {};
     const typeSettings = settings.types || {};
     const supportedTypes = new Set(["assignment", "quiz", "lab", "discussion"]);
     const courseSettings = settings.courses || {};
-    const sent = stored.sentReminderKeys && typeof stored.sentReminderKeys === "object"
-      ? { ...stored.sentReminderKeys }
-      : {};
+    const sent =
+      stored.sentReminderKeys && typeof stored.sentReminderKeys === "object"
+        ? { ...stored.sentReminderKeys }
+        : {};
     const now = Date.now();
     let changed = false;
 
     for (const item of stored.deadlines || []) {
-      if (!supportedTypes.has(item.type) || courseSettings[String(item.orgUnitId)] === false) continue;
+      if (
+        !supportedTypes.has(item.type) ||
+        courseSettings[String(item.orgUnitId)] === false
+      )
+        continue;
       const type = typeSettings[item.type] || { enabled: true, leadDays: 1 };
       if (type.enabled === false) continue;
-      const leadDays = Number.isInteger(type.leadDays) ? Math.min(7, Math.max(0, type.leadDays)) : 1;
+      const leadDays = Number.isInteger(type.leadDays)
+        ? Math.min(7, Math.max(0, type.leadDays))
+        : 1;
       const due = new Date(item.dueDate);
       if (Number.isNaN(due.getTime()) || due.getTime() <= now) continue;
       const notifyAt = reminderTime(item.dueDate, leadDays);
@@ -273,14 +340,16 @@ async function runReminderCheck() {
 
       const key = `${item.id}|${due.toISOString()}`;
       if (sent[key]) continue;
-      const course = (stored.courses || []).find((entry) => String(entry.orgUnitId) === String(item.orgUnitId));
+      const course = (stored.courses || []).find(
+        (entry) => String(entry.orgUnitId) === String(item.orgUnitId),
+      );
       try {
         await chrome.notifications.create(key, {
           type: "basic",
           iconUrl: chrome.runtime.getURL("icons/icon128.png"),
           title: item.title || "Upcoming deadline",
           message: `Due ${due.toLocaleString()}`,
-          contextMessage: course?.code || course?.name || "DalNow",
+          contextMessage: course?.code || course?.name || "DALnow",
           priority: 0,
         });
         sent[key] = now;
@@ -325,7 +394,7 @@ chrome.action.onClicked.addListener((tab) => {
 // Let the side panel ask for an immediate refresh (e.g. a manual "refresh" button).
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "REFRESH_NOW") {
-    refreshSafely().then(() => sendResponse({ ok: true }));
+    refreshSafely().then((status) => sendResponse({ ok: status.outcome === "success", outcome: status.outcome }));
     return true; // keep the message channel open for the async response
   }
   if (msg?.type === "REMINDERS_UPDATED") {
