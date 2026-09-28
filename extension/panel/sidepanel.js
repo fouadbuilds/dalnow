@@ -16,12 +16,15 @@ const courseSettingsEl = document.getElementById("courseReminderSettings");
 const themeOptionEls = [...document.querySelectorAll(".appearance-option")];
 const deleteDataBtn = document.getElementById("deleteDataBtn");
 const dataStatusEl = document.getElementById("dataStatus");
-const backgroundAppsGuideBtn = document.getElementById("backgroundAppsGuideBtn");
+const backgroundAppsGuideBtn = document.getElementById(
+  "backgroundAppsGuideBtn",
+);
 const backgroundAppsGuide = document.getElementById("backgroundAppsGuide");
 const reportBugBtn = document.getElementById("reportBugBtn");
 
 const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
-const TYPE_ORDER = ["assignment", "quiz", "lab", "discussion"];
+const TYPE_ORDER = ["assignment", "quiz", "lab", "discussion", "content"];
+const MAX_COURSE_NAME_LENGTH = 48;
 const TYPE_DETAILS = {
   assignment: {
     label: "Assignments",
@@ -35,6 +38,7 @@ const TYPE_DETAILS = {
     singular: "Discussion",
     icon: "discussion",
   },
+  content: { label: "Content", singular: "Content", icon: "content" },
 };
 const ICONS = {
   back: '<path d="m15 18-6-6 6-6"/>',
@@ -44,6 +48,7 @@ const ICONS = {
   lab: '<path d="M9 3h6M10 3v7l-5 8.2A2.5 2.5 0 0 0 7.1 22h9.8a2.5 2.5 0 0 0 2.1-3.8L14 10V3"/><path d="M8 15h8"/>',
   discussion:
     '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',
+  content: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
   close: '<path d="m18 6-12 12M6 6l12 12"/>',
 };
 
@@ -57,6 +62,7 @@ let itemState = {};
 let themePreference = "system";
 let reminderSettings = defaultReminderSettings();
 let courseColors = new Map();
+let courseOverrides = {};
 let homeScrollTop = 0;
 let liveStatus = { outcome: "success" };
 
@@ -92,6 +98,38 @@ function normalizeReminderSettings(value, courses = []) {
       typeof savedCourses[id] === "boolean" ? savedCourses[id] : true;
   }
   return { types, courses: courseSettings };
+}
+
+function normalizeCustomName(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, MAX_COURSE_NAME_LENGTH);
+  return trimmed || null;
+}
+
+function normalizeCourseOverrides(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const normalized = {};
+  for (const [id, saved] of Object.entries(source)) {
+    if (!/^\d+$/.test(id) || !saved || typeof saved !== "object") continue;
+    const customName = normalizeCustomName(saved.customName);
+    const hidden = saved.hidden === true;
+    if (hidden || customName) normalized[id] = { hidden, customName };
+  }
+  return normalized;
+}
+
+function isCourseHidden(orgUnitId) {
+  return courseOverrides[String(orgUnitId)]?.hidden === true;
+}
+
+function ensureHiddenCoursesHaveNoReminders(settings) {
+  const next = normalizeReminderSettings(settings, cachedCourses);
+  for (const course of cachedCourses) {
+    if (isCourseHidden(course.orgUnitId)) {
+      next.courses[String(course.orgUnitId)] = false;
+    }
+  }
+  return next;
 }
 
 function icon(name, className = "") {
@@ -162,6 +200,7 @@ async function deleteLocalData() {
     itemState = {};
     liveStatus = { outcome: "success" };
     reminderSettings = defaultReminderSettings();
+    courseOverrides = {};
     activeCourseFilter = "all";
     justRemovedThisSession.clear();
     applyThemePreference("system");
@@ -187,7 +226,7 @@ async function deleteLocalData() {
 }
 
 function setReminderSettings(next) {
-  reminderSettings = normalizeReminderSettings(next, cachedCourses);
+  reminderSettings = ensureHiddenCoursesHaveNoReminders(next);
   renderReminderSettings();
   chrome.storage.local
     .set({ reminderSettings })
@@ -200,11 +239,73 @@ function setReminderSettings(next) {
     });
 }
 
-function courseLabel(course) {
+function defaultCourseLabel(course) {
   const code = String(course.code || "").trim();
   const match = code.match(/([A-Z]{2,8})\s*[- ]?(\d{4})/i);
   if (match) return `${match[1].toUpperCase()} ${match[2]}`;
   return code || course.name || `Course ${course.orgUnitId}`;
+}
+
+function courseLabel(course) {
+  return (
+    courseOverrides[String(course.orgUnitId)]?.customName ||
+    defaultCourseLabel(course)
+  );
+}
+
+function saveCourseOverrides(next, includeReminderSettings = false) {
+  courseOverrides = normalizeCourseOverrides(next);
+  reminderSettings = ensureHiddenCoursesHaveNoReminders(reminderSettings);
+  if (activeCourseFilter !== "all" && isCourseHidden(activeCourseFilter)) {
+    activeCourseFilter = "all";
+  }
+  renderFilters();
+  render();
+  renderReminderSettings();
+  const values = includeReminderSettings
+    ? { courseOverrides, reminderSettings }
+    : { courseOverrides };
+  chrome.storage.local
+    .set(values)
+    .then(() => {
+      if (includeReminderSettings)
+        chrome.runtime
+          .sendMessage({ type: "REMINDERS_UPDATED" })
+          .catch(() => {});
+    })
+    .catch(() => {
+      dataStatusEl.textContent =
+        "Course changes couldn't be saved. Please try again.";
+    });
+}
+
+function setCourseVisibility(course, visible) {
+  const id = String(course.orgUnitId);
+  const nextOverrides = structuredClone(courseOverrides);
+  const current = nextOverrides[id] || { hidden: false, customName: null };
+  nextOverrides[id] = { ...current, hidden: !visible };
+  if (!nextOverrides[id].hidden && !nextOverrides[id].customName) {
+    delete nextOverrides[id];
+  }
+  if (!visible) {
+    const nextReminders = structuredClone(reminderSettings);
+    nextReminders.courses[id] = false;
+    reminderSettings = nextReminders;
+  }
+  saveCourseOverrides(nextOverrides, true);
+}
+
+function setCourseCustomName(course, value) {
+  const id = String(course.orgUnitId);
+  const nextOverrides = structuredClone(courseOverrides);
+  const current = nextOverrides[id] || { hidden: false, customName: null };
+  const customName = normalizeCustomName(value);
+  if (!current.hidden && !customName) {
+    delete nextOverrides[id];
+  } else {
+    nextOverrides[id] = { ...current, customName };
+  }
+  saveCourseOverrides(nextOverrides);
 }
 
 function assignCourseColors() {
@@ -251,7 +352,7 @@ function courseChip(course, count = null, pressed = false, isAll = false) {
   if (count !== null) {
     const countEl = document.createElement("span");
     countEl.className = "course-count";
-    countEl.textContent = `· ${count}`;
+    countEl.textContent = ` ${count}`;
     chip.append(countEl);
   }
   if (isAll)
@@ -377,8 +478,12 @@ function activeDeadlines() {
   return cachedDeadlines.filter((item) => !itemState[item.id]?.removed);
 }
 
+function homeDeadlines() {
+  return activeDeadlines().filter((item) => !isCourseHidden(item.orgUnitId));
+}
+
 function renderSummary() {
-  const groups = groupDeadlines(activeDeadlines());
+  const groups = groupDeadlines(homeDeadlines());
   const todayCount = groups.Today.length;
   const tomorrowCount = groups["This week"].filter((item) => {
     const due = parseDue(item.dueDate);
@@ -405,16 +510,18 @@ function renderFilters() {
   filtersEl.replaceChildren();
   assignCourseColors();
   const counts = new Map();
-  for (const item of activeDeadlines())
+  for (const item of homeDeadlines())
     counts.set(
       String(item.orgUnitId),
       (counts.get(String(item.orgUnitId)) || 0) + 1,
     );
-  const allCount = activeDeadlines().length;
+  const allCount = homeDeadlines().length;
   filtersEl.append(
     courseChip(null, allCount, activeCourseFilter === "all", true),
   );
-  for (const course of cachedCourses) {
+  for (const course of cachedCourses.filter(
+    (course) => !isCourseHidden(course.orgUnitId),
+  )) {
     filtersEl.append(
       courseChip(
         course,
@@ -427,6 +534,7 @@ function renderFilters() {
 
 function getVisibleDeadlines() {
   return cachedDeadlines.filter((item) => {
+    if (isCourseHidden(item.orgUnitId)) return false;
     if (itemState[item.id]?.removed && !justRemovedThisSession.has(item.id))
       return false;
     return (
@@ -492,7 +600,8 @@ function render(deadlines, _lastRefreshed, lastError, status = liveStatus) {
   statusEl.textContent = lastError
     ? "Couldn't reach Learn. Showing your last saved deadlines."
     : "";
-  const isSignedOutEmpty = cachedDeadlines.length === 0 && status?.outcome === "not-signed-in";
+  const isSignedOutEmpty =
+    cachedDeadlines.length === 0 && status?.outcome === "not-signed-in";
   summaryEl.hidden = isSignedOutEmpty;
   if (!isSignedOutEmpty) renderSummary();
 
@@ -503,9 +612,10 @@ function render(deadlines, _lastRefreshed, lastError, status = liveStatus) {
     } else {
       const empty = document.createElement("div");
       empty.className = "empty";
-      empty.textContent = cachedDeadlines.length === 0
-        ? "No deadlines found yet. Refresh and make sure you're logged into Learn."
-        : "No deadlines match this course filter.";
+      empty.textContent =
+        cachedDeadlines.length === 0
+          ? "No deadlines found yet. Refresh and make sure you're logged into Learn."
+          : "No deadlines match this course filter.";
       listEl.append(empty);
     }
     return;
@@ -524,7 +634,8 @@ function renderSignedOutCard() {
   const heading = document.createElement("h2");
   heading.textContent = "Sign in to Brightspace first";
   const copy = document.createElement("p");
-  copy.textContent = "DALnow reads Brightspace through the session in this browser. Open Brightspace and sign in. Your deadlines show up here once a Learn page loads. If they don't, select Try again.";
+  copy.textContent =
+    "DALnow reads Brightspace through the session in this browser. Open Brightspace and sign in. Your deadlines show up here once a Learn page loads. If they don't, select Try again.";
   const actions = document.createElement("div");
   actions.className = "sign-in-actions";
   const open = document.createElement("a");
@@ -568,7 +679,7 @@ function renderCard(item) {
   coursePill.className = "item-course";
   coursePill.style.setProperty("--course-color", `var(${courseColor})`);
   coursePill.textContent = courseLabel(course);
-  coursePill.title = course.name || courseLabel(course);
+  coursePill.title = courseLabel(course);
   const typeBadge = document.createElement("span");
   typeBadge.className = "item-type";
   typeBadge.setAttribute("aria-label", TYPE_DETAILS[type].singular);
@@ -585,7 +696,7 @@ function renderCard(item) {
 
   const due = document.createElement("div");
   due.className = "item-due";
-  due.textContent = formatDue(item.dueDate);
+  due.textContent = `${item.dueType === "closes" ? "Closes" : "Due"} ${formatDue(item.dueDate)}`;
 
   const removeBtn = document.createElement("button");
   removeBtn.className = "remove-button";
@@ -668,10 +779,13 @@ function renderReminderSettings() {
     );
     range.dir = "rtl";
     range.addEventListener("keydown", (event) => {
-      const delta = event.key === "ArrowLeft" ? 1 : event.key === "ArrowRight" ? -1 : 0;
+      const delta =
+        event.key === "ArrowLeft" ? 1 : event.key === "ArrowRight" ? -1 : 0;
       if (!delta) return;
       event.preventDefault();
-      range.value = String(Math.min(7, Math.max(0, Number(range.value) + delta)));
+      range.value = String(
+        Math.min(7, Math.max(0, Number(range.value) + delta)),
+      );
       range.dispatchEvent(new Event("input", { bubbles: true }));
       range.dispatchEvent(new Event("change", { bubbles: true }));
     });
@@ -712,6 +826,7 @@ function renderReminderSettings() {
   }
   for (const course of cachedCourses) {
     const id = String(course.orgUnitId);
+    const hidden = isCourseHidden(id);
     const row = document.createElement("div");
     row.className = "setting-card course-setting";
     const chip = document.createElement("span");
@@ -724,23 +839,68 @@ function renderReminderSettings() {
     count.className = "course-count";
     count.textContent = `· ${deadlineCount}`;
     chip.append(count);
-    chip.title = course.name || courseLabel(course);
+    chip.title = courseLabel(course);
     chip.style.setProperty(
       "--course-color",
       `var(${courseColors.get(id) || "--course-1"})`,
     );
-    const toggle = makeToggle(
-      `course-${id}`,
-      `Reminders for ${courseLabel(course)}`,
-      reminderSettings.courses[id] !== false,
+    const nameLabel = document.createElement("label");
+    nameLabel.className = "course-name-label";
+    nameLabel.htmlFor = `course-name-${id}`;
+    nameLabel.textContent = "Course name";
+    const nameInput = document.createElement("input");
+    nameInput.className = "course-name-input";
+    nameInput.id = `course-name-${id}`;
+    nameInput.type = "text";
+    nameInput.maxLength = MAX_COURSE_NAME_LENGTH;
+    nameInput.value =
+      courseOverrides[id]?.customName || defaultCourseLabel(course);
+    nameInput.placeholder = defaultCourseLabel(course);
+    nameInput.setAttribute(
+      "aria-label",
+      `Custom name for ${defaultCourseLabel(course)}`,
+    );
+    nameInput.addEventListener("change", () =>
+      setCourseCustomName(course, nameInput.value),
+    );
+
+    const controls = document.createElement("div");
+    controls.className = "course-controls";
+    const visibilityControl = document.createElement("div");
+    visibilityControl.className = "course-control";
+    const visibilityLabel = document.createElement("span");
+    visibilityLabel.textContent = "Show on Home";
+    const visibilityToggle = makeToggle(
+      `course-visible-${id}`,
+      `Show ${courseLabel(course)} on Home`,
+      !hidden,
       `var(${courseColors.get(id) || "--course-1"})`,
     );
-    toggle.input.addEventListener("change", () => {
+    visibilityToggle.input.addEventListener("change", () =>
+      setCourseVisibility(course, visibilityToggle.input.checked),
+    );
+    visibilityControl.append(visibilityLabel, visibilityToggle.wrapper);
+
+    const reminderControl = document.createElement("div");
+    reminderControl.className = "course-control";
+    const reminderLabel = document.createElement("span");
+    reminderLabel.textContent = "Reminders";
+    const reminderToggle = makeToggle(
+      `course-${id}`,
+      `Reminders for ${courseLabel(course)}`,
+      !hidden && reminderSettings.courses[id] !== false,
+      `var(${courseColors.get(id) || "--course-1"})`,
+    );
+    reminderToggle.input.disabled = hidden;
+    reminderToggle.wrapper.classList.toggle("is-disabled", hidden);
+    reminderToggle.input.addEventListener("change", () => {
       const next = structuredClone(reminderSettings);
-      next.courses[id] = toggle.input.checked;
+      next.courses[id] = reminderToggle.input.checked;
       setReminderSettings(next);
     });
-    row.append(chip, toggle.wrapper);
+    reminderControl.append(reminderLabel, reminderToggle.wrapper);
+    controls.append(visibilityControl, reminderControl);
+    row.append(chip, nameLabel, nameInput, controls);
     courseSettingsEl.append(row);
   }
 }
@@ -781,15 +941,18 @@ async function load() {
     "liveStatus",
     "themePreference",
     "reminderSettings",
+    "courseOverrides",
   ]);
   cachedDeadlines = stored.deadlines || [];
   cachedCourses = stored.courses || deriveCourses(cachedDeadlines);
   itemState = stored.itemState || {};
-  liveStatus = stored.liveStatus || { outcome: stored.lastError === "not-signed-in" ? "not-signed-in" : "success" };
+  liveStatus = stored.liveStatus || {
+    outcome: stored.lastError === "not-signed-in" ? "not-signed-in" : "success",
+  };
   applyThemePreference(stored.themePreference);
-  reminderSettings = normalizeReminderSettings(
+  courseOverrides = normalizeCourseOverrides(stored.courseOverrides);
+  reminderSettings = ensureHiddenCoursesHaveNoReminders(
     stored.reminderSettings,
-    cachedCourses,
   );
   renderFilters();
   render(cachedDeadlines, stored.lastRefreshed, stored.lastError, liveStatus);
@@ -838,7 +1001,8 @@ for (const option of themeOptionEls) {
 }
 deleteDataBtn.addEventListener("click", deleteLocalData);
 backgroundAppsGuideBtn.addEventListener("click", () => {
-  const expanded = backgroundAppsGuideBtn.getAttribute("aria-expanded") === "true";
+  const expanded =
+    backgroundAppsGuideBtn.getAttribute("aria-expanded") === "true";
   backgroundAppsGuideBtn.setAttribute("aria-expanded", String(!expanded));
   backgroundAppsGuide.hidden = expanded;
 });
@@ -854,7 +1018,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
     changes.liveStatus ||
     changes.courses ||
     changes.itemState ||
-    changes.reminderSettings
+    changes.reminderSettings ||
+    changes.courseOverrides
   ) {
     if (changes.deadlines && !changes.deadlines.newValue) {
       activeCourseFilter = "all";

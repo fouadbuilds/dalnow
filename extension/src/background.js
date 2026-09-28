@@ -2,7 +2,6 @@
 //
 // Everything here does GET-only calls against dal.brightspace.com's Valence
 // API, riding the session cookie you already have from being logged into
-// Learn in this browser.
 // involved anywhere. Confirmed live against the real tenant:
 //   - lp/1.63/users/whoami                -> identity check (used only to
 //                                             confirm we're logged in)
@@ -131,51 +130,70 @@ async function getDropboxDeadlines(orgUnitId, le) {
     folders = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/dropbox/folders/`, "/d2l/api/le/{v}/{orgUnitId}/dropbox/folders/");
   } catch (e) {
     if (e?.outcome === "not-signed-in") throw e;
-    return []; // course may have dropbox disabled entirely
+    return []; // course may have dropbox disabled entirely, hopefully not
   }
   if (!Array.isArray(folders)) return [];
   return folders
-    .filter((f) => f && f.DueDate)
-    .map((f) => ({
-      id: `dropbox-${f.Id}`,
-      title: f.Name ?? "Untitled assignment",
-      // Labs are stored as a distinct reminder type when Learn's folder
-      // title explicitly identifies them; other Dropbox items remain assignments.
-      type: /\blab\b/i.test(f.Name ?? "") ? "lab" : "assignment",
-      dueDate: f.DueDate,
-      orgUnitId,
-      // Confirmed deep-link pattern (verified live against the tenant).
-      // All IDs needed are already in this list response — no extra
-      // per-item API calls required.
-      url: `${BASE}/d2l/lms/dropbox/user/folder_submit_files.d2l?ou=${orgUnitId}&db=${f.Id}`,
-    }));
+    .map((folder) => {
+      if (!folder || isFutureDate(folder.Availability?.StartDate)) return null;
+      const deadline = getDropboxDeadline(folder);
+      if (!deadline) return null;
+      return {
+        id: `dropbox-${folder.Id}`,
+        entityId: String(folder.Id),
+        title: folder.Name ?? "Untitled assignment",
+        // Labs are stored as a distinct reminder type when Learn's folder
+        // title explicitly identifies them; other Dropbox items remain assignments.
+        type: /\blab\b/i.test(folder.Name ?? "") ? "lab" : "assignment",
+        ...deadline,
+        orgUnitId,
+        // Confirmed deep-link pattern (verified live against the tenant).
+        // All IDs needed are already in this list response — no extra
+        // per-item API calls required.
+        url: `${BASE}/d2l/lms/dropbox/user/folder_submit_files.d2l?ou=${orgUnitId}&db=${folder.Id}`,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getDropboxDeadline(folder) {
+  const dueDate = getDueDate(folder);
+  if (dueDate) return { dueDate, dueType: "due" };
+
+  const closesAt = folder?.Availability?.EndDate;
+  if (typeof closesAt === "string" && !Number.isNaN(Date.parse(closesAt))) {
+    return { dueDate: closesAt, dueType: "closes" };
+  }
+  return null;
+}
+
+function isFutureDate(value) {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value)) && Date.parse(value) > Date.now();
 }
 
 async function getQuizDeadlines(orgUnitId, le) {
   let quizzes;
   try {
-    const data = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/quizzes/`, "/d2l/api/le/{v}/{orgUnitId}/quizzes/");
-    quizzes = data.Objects || data;
+    quizzes = await getAllQuizPages(orgUnitId, le);
   } catch (e) {
     if (e?.outcome === "not-signed-in") throw e;
     return []; // course may have quizzes disabled entirely
   }
-  // Quiz response shape is unverified (assumed similar to dropbox with
-  // Id/QuizId, Name, DueDate). Tolerate missing/renamed fields and never
-  // let a parsing surprise here crash the whole refresh.
   if (!Array.isArray(quizzes)) return [];
   try {
     return quizzes
-      .filter((q) => q && (q.DueDate || q.DueDateTime))
-      .map((q) => {
+      .map((q) => ({ quiz: q, dueDate: getDueDate(q) }))
+      .filter(({ quiz, dueDate }) => quiz && dueDate)
+      .map(({ quiz: q, dueDate: due }) => {
         const quizId = q.QuizId ?? q.Id;
         const name = q.Name ?? q.Title ?? "Untitled quiz";
-        const due = q.DueDate ?? q.DueDateTime;
         return {
           id: `quiz-${quizId}`,
+          entityId: String(quizId),
           title: name,
           type: "quiz",
           dueDate: due,
+          dueType: "due",
           orgUnitId,
           // Confirmed deep-link pattern; quizId comes from the same list
           // response, no extra calls needed.
@@ -186,6 +204,50 @@ async function getQuizDeadlines(orgUnitId, le) {
   } catch (e) {
     return [];
   }
+}
+
+function getDueDate(item) {
+  // Brightspace's current QuizReadData uses DueDate. Keep the two legacy
+  // spellings as fallbacks so a tenant-specific response cannot hide a real
+  // deadline. Availability EndDate is deliberately excluded: it is not a due
+  // date and would create false reminders.
+  for (const field of ["DueDate", "Deadline", "DueDateTime"]) {
+    const value = item?.[field];
+    if (typeof value === "string" && !Number.isNaN(Date.parse(value))) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function getNextApiPath(next) {
+  const url = new URL(next, BASE);
+  if (url.origin !== BASE || !url.pathname.startsWith("/d2l/api/")) {
+    throw refreshError("api-error");
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+async function getAllQuizPages(orgUnitId, le) {
+  const endpoint = "/d2l/api/le/{v}/{orgUnitId}/quizzes/";
+  let path = `/d2l/api/le/${le}/${orgUnitId}/quizzes/`;
+  const visitedPaths = new Set();
+  const quizzes = [];
+
+  // D2L returns this route as Api.ObjectListPage, so an assignment of a quiz
+  // can otherwise disappear whenever it lands after the first result page.
+  while (path) {
+    if (visitedPaths.has(path)) throw refreshError("api-error");
+    visitedPaths.add(path);
+
+    const page = await apiGet(path, endpoint);
+    if (Array.isArray(page)) return page; // compatibility with older tenants
+    if (!page || !Array.isArray(page.Objects)) throw refreshError("api-error");
+
+    quizzes.push(...page.Objects);
+    path = page.Next ? getNextApiPath(page.Next) : null;
+  }
+  return quizzes;
 }
 
 async function getDiscussionDeadlines(orgUnitId, le) {
@@ -210,9 +272,11 @@ async function getDiscussionDeadlines(orgUnitId, le) {
         const topicId = t.TopicId ?? t.Id;
         return {
           id: `discussion-${topicId}`,
+          entityId: String(topicId),
           title: t.Name ?? t.Title ?? "Untitled discussion",
           type: "discussion",
           dueDate: t.DueDate ?? t.DueDateTime,
+          dueType: "due",
           orgUnitId,
           // Unverified per-item pattern → course homepage fallback.
           url: `${BASE}/d2l/home/${orgUnitId}`,
@@ -221,6 +285,87 @@ async function getDiscussionDeadlines(orgUnitId, le) {
       .filter((item) => item.dueDate);
   } catch (e) {
     return [];
+  }
+}
+
+async function getCalendarDeadlines(courses, le, existingItems) {
+  const { courseOverrides = {} } = await chrome.storage.local.get("courseOverrides");
+  const visibleCourses = courses.filter(
+    (course) => courseOverrides[String(course.orgUnitId)]?.hidden !== true,
+  );
+  if (!visibleCourses.length) return [];
+
+  const courseById = new Map(
+    visibleCourses.map((course) => [String(course.orgUnitId), course]),
+  );
+  const seenEntities = new Set(
+    existingItems
+      .filter((item) => item.entityId !== undefined && item.entityId !== null)
+      .map((item) => `${item.orgUnitId}:${item.entityId}`),
+  );
+  const now = new Date();
+  const end = new Date(now);
+  end.setFullYear(end.getFullYear() + 1);
+  const query = new URLSearchParams({
+    orgUnitIdsCSV: visibleCourses.map((course) => course.orgUnitId).join(","),
+    startDateTime: now.toISOString(),
+    endDateTime: end.toISOString(),
+    eventType: "6",
+  });
+  const endpoint = "/d2l/api/le/{v}/calendar/events/myEvents/";
+  let path = `/d2l/api/le/${le}/calendar/events/myEvents/?${query}`;
+  const visitedPaths = new Set();
+  const deadlines = [];
+
+  try {
+    while (path) {
+      if (visitedPaths.has(path)) throw refreshError("api-error");
+      visitedPaths.add(path);
+      const page = await apiGet(path, endpoint);
+      if (!page || !Array.isArray(page.Objects)) throw refreshError("api-error");
+
+      for (const event of page.Objects) {
+        const course = courseById.get(String(event?.OrgUnitId));
+        const dueDate = event?.StartDateTime;
+        if (!course || typeof dueDate !== "string" || Number.isNaN(Date.parse(dueDate))) continue;
+
+        const entityId = event.AssociatedEntity?.AssociatedEntityId;
+        const entityKey = entityId === undefined || entityId === null
+          ? null
+          : `${course.orgUnitId}:${entityId}`;
+        if (entityKey && seenEntities.has(entityKey)) continue;
+        if (entityKey) seenEntities.add(entityKey);
+
+        const fallbackLink = `${BASE}/d2l/le/content/${course.orgUnitId}/viewContent/${encodeURIComponent(entityId ?? event.CalendarEventId)}/View`;
+        deadlines.push({
+          id: `content-${course.orgUnitId}-${entityId ?? event.CalendarEventId}`,
+          entityId: entityId === undefined || entityId === null ? null : String(entityId),
+          title: event.Title ?? "Untitled content item",
+          type: "content",
+          dueDate,
+          dueType: "due",
+          orgUnitId: course.orgUnitId,
+          courseName: course.name,
+          courseCode: course.code,
+          url: safeCalendarLink(event.AssociatedEntity?.Link, fallbackLink),
+        });
+      }
+      path = page.Next ? getNextApiPath(page.Next) : null;
+    }
+  } catch (error) {
+    if (error?.outcome === "not-signed-in") throw error;
+    return [];
+  }
+  return deadlines;
+}
+
+function safeCalendarLink(link, fallback) {
+  if (typeof link !== "string" || !link.trim()) return fallback;
+  try {
+    const url = new URL(link, BASE);
+    return url.origin === BASE ? url.href : fallback;
+  } catch {
+    return fallback;
   }
 }
 
@@ -248,12 +393,18 @@ async function refreshAll() {
     }),
   );
 
-  const allDeadlines = perCourse
-    .flat()
+  const courseDeadlines = perCourse.flat();
+  const calendarDeadlines = await getCalendarDeadlines(
+    courses,
+    le,
+    courseDeadlines,
+  );
+
+  const allDeadlines = [...courseDeadlines, ...calendarDeadlines]
     .filter((item) => {
       // Past-due rule — DELIBERATE SIMPLIFICATION, not a bug (see plan.md).
-      // If DueDate < now the item is excluded entirely, before storage or
-      // UI. No submission-status check (would need extra per-item API
+      // If DueDate < now the item is excluded entirely, before storage or UI
+      // No submission-status check (would need extra per-item API
       // calls), no late-window / Availability.EndDate consideration.
       // Rationale: once a deadline has passed, it's passed — extensions or
       // late arrangements are the student's own responsibility to track.
@@ -313,7 +464,7 @@ async function runReminderCheck() {
     ]);
     const settings = stored.reminderSettings || {};
     const typeSettings = settings.types || {};
-    const supportedTypes = new Set(["assignment", "quiz", "lab", "discussion"]);
+    const supportedTypes = new Set(["assignment", "quiz", "lab", "discussion", "content"]);
     const courseSettings = settings.courses || {};
     const sent =
       stored.sentReminderKeys && typeof stored.sentReminderKeys === "object"
