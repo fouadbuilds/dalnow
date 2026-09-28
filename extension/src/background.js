@@ -369,6 +369,45 @@ function safeCalendarLink(link, fallback) {
   }
 }
 
+async function getUnavailableCalendarContentKeys(calendarDeadlines, le) {
+  const entityIdsByCourse = new Map();
+  for (const item of calendarDeadlines) {
+    if (item.type !== "content" || !item.entityId) continue;
+    const courseId = String(item.orgUnitId);
+    if (!entityIdsByCourse.has(courseId)) entityIdsByCourse.set(courseId, new Set());
+    entityIdsByCourse.get(courseId).add(String(item.entityId));
+  }
+
+  const unavailable = new Set();
+  const endpoint = "/d2l/api/le/{v}/{orgUnitId}/content/toc";
+  await Promise.all(
+    [...entityIdsByCourse].map(async ([courseId, entityIds]) => {
+      try {
+        const toc = await apiGet(
+          `/d2l/api/le/${le}/${courseId}/content/toc`,
+          endpoint,
+        );
+        const topics = (toc?.Modules || []).flatMap(
+          (module) => module?.Topics || [],
+        );
+        for (const topic of topics) {
+          if (
+            entityIds.has(String(topic?.TopicId)) &&
+            isFutureDate(topic.StartDateTime)
+          ) {
+            unavailable.add(`${courseId}:${topic.TopicId}`);
+          }
+        }
+      } catch (error) {
+        // An unavailable TOC must not hide a deadline. The Calendar item is
+        // retained whenever topic availability cannot be verified.
+        if (error?.outcome === "not-signed-in") throw error;
+      }
+    }),
+  );
+  return unavailable;
+}
+
 // ---- full refresh ---------------------------------------------------------
 
 async function refreshAll() {
@@ -399,8 +438,17 @@ async function refreshAll() {
     le,
     courseDeadlines,
   );
+  const unavailableContentKeys = await getUnavailableCalendarContentKeys(
+    calendarDeadlines,
+    le,
+  );
 
-  const allDeadlines = [...courseDeadlines, ...calendarDeadlines]
+  const allDeadlines = [
+    ...courseDeadlines,
+    ...calendarDeadlines.filter(
+      (item) => !unavailableContentKeys.has(`${item.orgUnitId}:${item.entityId}`),
+    ),
+  ]
     .filter((item) => {
       // Past-due rule — DELIBERATE SIMPLIFICATION, not a bug (see plan.md).
       // If DueDate < now the item is excluded entirely, before storage or UI

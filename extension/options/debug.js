@@ -11,6 +11,7 @@ const ENDPOINTS = new Set([
   "/d2l/api/le/{v}/{orgUnitId}/quizzes/",
   "/d2l/api/le/{v}/{orgUnitId}/discussions/",
   "/d2l/api/le/{v}/calendar/events/myEvents/",
+  "/d2l/api/le/{v}/{orgUnitId}/content/toc",
 ]);
 const OUTCOMES = new Set(["success", "not-signed-in", "network-error", "api-error"]);
 
