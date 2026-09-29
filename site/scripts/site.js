@@ -6,6 +6,10 @@ let toastTimeout;
 function setTheme(theme) {
   root.dataset.theme = theme;
   const isDark = theme === "dark";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute(
+    "content",
+    isDark ? "#1a1e2c" : "#dde6f3",
+  );
   themeToggle?.setAttribute("aria-pressed", String(isDark));
   themeToggle?.setAttribute(
     "aria-label",
