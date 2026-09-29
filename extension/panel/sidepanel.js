@@ -7,7 +7,7 @@ const refreshStatusEl = document.getElementById("refreshStatus");
 const settingsBtn = document.getElementById("settingsBtn");
 const backBtn = document.getElementById("backBtn");
 const panelTitleEl = document.getElementById("panelTitle");
-const brandIconEl = document.querySelector(".brand-icon");
+const brandLogoEl = document.querySelector(".brand-logo");
 const headerActionsEl = document.querySelector(".header-actions");
 const homeViewEl = document.getElementById("homeView");
 const settingsViewEl = document.getElementById("settingsView");
@@ -165,7 +165,7 @@ function openSettings() {
   homeViewEl.hidden = true;
   settingsViewEl.hidden = false;
   panelTitleEl.textContent = "Settings";
-  brandIconEl.hidden = true;
+  brandLogoEl.hidden = true;
   headerActionsEl.hidden = true;
   backBtn.hidden = false;
   document.scrollingElement?.scrollTo(0, 0);
@@ -176,7 +176,7 @@ function closeSettings() {
   settingsViewEl.hidden = true;
   homeViewEl.hidden = false;
   panelTitleEl.textContent = "DALnow";
-  brandIconEl.hidden = false;
+  brandLogoEl.hidden = false;
   headerActionsEl.hidden = false;
   backBtn.hidden = true;
   requestAnimationFrame(() =>

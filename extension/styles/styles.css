@@ -53,11 +53,22 @@ a:focus-visible {
   gap: var(--space-3);
   min-width: 0;
 }
-.brand-icon {
+.brand-logo {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
   width: 3rem;
   height: 3rem;
-  border-radius: var(--radius-md);
-  box-shadow: var(--clay-sm);
+  border-radius: var(--radius-sm);
+  background: var(--tile);
+  box-shadow: var(--shadow-logo);
+}
+.brand-icon {
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-chip);
+  object-fit: contain;
 }
 .app-header h1 {
   margin: 0;
