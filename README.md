@@ -1,7 +1,5 @@
 
 
-https://github.com/user-attachments/assets/2e6e0f07-e620-4507-a87f-d79e06273169
-
 <div align="center">
 
 <img src="media/logo.png" width="96" alt="logo">
@@ -23,7 +21,8 @@ A Chrome extension for Dalhousie University students.
 
 </div>
 
-https://github.com/user-attachments/assets/0308c84c-db48-4fef-b2ab-1eab881b1191
+
+https://github.com/user-attachments/assets/2e6e0f07-e620-4507-a87f-d79e06273169
 
 ---
 
