@@ -19,7 +19,11 @@ A Chrome extension for Dalhousie University students.
 
 </div>
 
-#link to vid
+## Demo
+
+<video src="site/assets/dalnow-demo.mp4" controls muted>
+  Your browser does not support the DALnow demo video.
+</video>
 
 ---
 
