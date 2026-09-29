@@ -13,7 +13,7 @@ A Chrome extension for Dalhousie University students.
 <br>
 **Stop Playing Find My Assignment With Your Profs**
 
-[Chrome Web Store](https://chromewebstore.google.com/category/extensions) &nbsp;·&nbsp; [Website](weblink) &nbsp;·&nbsp; [Privacy policy](privacylink)
+[Chrome Web Store](https://chromewebstore.google.com/category/extensions) &nbsp;·&nbsp; [Website](https://dalnow-site.vercel.app/) &nbsp;·&nbsp; [Privacy policy](https://dalnow-site.vercel.app/privacy.html)
 
 ![manifest v3](https://img.shields.io/badge/Chrome-Manifest_V3-FFE45C?style=flat-square&labelColor=17181C)
 ![license](https://img.shields.io/badge/license-MIT-FFE45C?style=flat-square&labelColor=17181C)
@@ -78,7 +78,7 @@ This repo is public so you can read exactly what the extension does with your Br
 - Your courses, deadlines and settings are saved in your browser's extension storage on your own computer.
 
 
-The full policy is at [privacypage](privacylink).
+The full policy is at the [DALnow privacy policy](https://dalnow-site.vercel.app/privacy.html).
 
 ## Running it from this repo
 
