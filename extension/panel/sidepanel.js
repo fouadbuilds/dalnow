@@ -216,7 +216,7 @@ async function deleteLocalData() {
         "DALnow data deleted. Your deadlines have been refreshed.";
     } catch {
       dataStatusEl.textContent =
-        "Local data deleted. Refresh your deadlines when Learn is available.";
+        "Local data deleted. Refresh your deadlines when Brightspace is available.";
     }
   } catch {
     dataStatusEl.textContent = "Couldn't delete local data. Please try again.";
@@ -598,7 +598,7 @@ function render(deadlines, _lastRefreshed, lastError, status = liveStatus) {
   if (deadlines !== undefined) cachedDeadlines = deadlines || [];
   listEl.replaceChildren();
   statusEl.textContent = lastError
-    ? "Couldn't reach Learn. Showing your last saved deadlines."
+    ? "Couldn't reach Brightspace. Showing your last saved deadlines."
     : "";
   const isSignedOutEmpty =
     cachedDeadlines.length === 0 && status?.outcome === "not-signed-in";
@@ -614,7 +614,7 @@ function render(deadlines, _lastRefreshed, lastError, status = liveStatus) {
       empty.className = "empty";
       empty.textContent =
         cachedDeadlines.length === 0
-          ? "No deadlines found yet. Refresh and make sure you're logged into Learn."
+          ? "No deadlines found yet. Refresh and make sure you're logged into Brightspace."
           : "No deadlines match this course filter.";
       listEl.append(empty);
     }
@@ -635,7 +635,7 @@ function renderSignedOutCard() {
   heading.textContent = "Sign in to Brightspace first";
   const copy = document.createElement("p");
   copy.textContent =
-    "DALnow reads Brightspace through the session in this browser. Open Brightspace and sign in. Your deadlines show up here once a Learn page loads. If they don't, select Try again.";
+    "DALnow reads Brightspace through the session in this browser. Open Brightspace and sign in. Your deadlines show up here once a Brightspace page loads. If they don't, select Try again.";
   const actions = document.createElement("div");
   actions.className = "sign-in-actions";
   const open = document.createElement("a");
@@ -983,7 +983,7 @@ async function refreshNow() {
     await load();
   } catch {
     statusEl.textContent =
-      "Couldn't reach Learn. Showing your last saved deadlines.";
+      "Couldn't reach Brightspace. Showing your last saved deadlines.";
   } finally {
     refreshBtn.classList.remove("is-refreshing");
     refreshStatusEl.textContent = "";

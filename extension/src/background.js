@@ -142,7 +142,6 @@ async function getDropboxDeadlines(orgUnitId, le) {
         id: `dropbox-${folder.Id}`,
         entityId: String(folder.Id),
         title: folder.Name ?? "Untitled assignment",
-        // Labs are stored as a distinct reminder type when Learn's folder
         // title explicitly identifies them; other Dropbox items remain assignments.
         type: /\blab\b/i.test(folder.Name ?? "") ? "lab" : "assignment",
         ...deadline,
