@@ -1,7 +1,5 @@
 const root = document.documentElement;
 const themeToggle = document.querySelector(".theme-toggle");
-const toast = document.querySelector(".toast");
-let toastTimeout;
 
 function setTheme(theme) {
   root.dataset.theme = theme;
@@ -24,18 +22,6 @@ if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
 themeToggle?.addEventListener("click", () => {
   setTheme(root.dataset.theme === "dark" ? "light" : "dark");
 });
-
-for (const link of document.querySelectorAll("[data-placeholder-link]")) {
-  link.addEventListener("click", (event) => {
-    event.preventDefault();
-    if (!toast) return;
-    toast.hidden = false;
-    clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => {
-      toast.hidden = true;
-    }, 3600);
-  });
-}
 
 for (const range of document.querySelectorAll("[data-reminder-range]")) {
   const label = range.closest(".reminder-control");

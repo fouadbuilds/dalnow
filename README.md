@@ -2,7 +2,7 @@
 
 <img src="media/logo.png" width="96" alt="logo">
 
-# DALnow &nbsp;<a href="https://chromewebstore.google.com/category/extensions"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-Add%20to%20Chrome-FFE45C?style=flat-square&labelColor=17181C&logo=googlechrome&logoColor=white" alt="Add to Chrome from the Chrome Web Store"></a>
+# DALnow &nbsp;<a href="https://chromewebstore.google.com/detail/onhhfdaikmocmpfmjlfdmimnblldbibm?utm_source=item-share-cb"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-Add%20to%20Chrome-FFE45C?style=flat-square&labelColor=17181C&logo=googlechrome&logoColor=white" alt="Add to Chrome from the Chrome Web Store"></a>
 
 **Every Brightspace deadline, kept up to date when profs move them.**
 
@@ -10,7 +10,7 @@ A Chrome extension for Dalhousie University students.
 <br>
 **Stop Playing Find My Assignment With Your Profs**
 
-[Chrome Web Store](https://chromewebstore.google.com/category/extensions) &nbsp;·&nbsp; [Website](https://dalnow-site.vercel.app/) &nbsp;·&nbsp; [Privacy policy](https://dalnow-site.vercel.app/privacy.html)
+[Chrome Web Store](https://chromewebstore.google.com/detail/onhhfdaikmocmpfmjlfdmimnblldbibm?utm_source=item-share-cb) &nbsp;·&nbsp; [Website](https://dalnow-site.vercel.app/) &nbsp;·&nbsp; [Privacy policy](https://dalnow-site.vercel.app/privacy.html)
 
 ![manifest v3](https://img.shields.io/badge/Chrome-Manifest_V3-FFE45C?style=flat-square&labelColor=17181C)
 ![license](https://img.shields.io/badge/license-MIT-FFE45C?style=flat-square&labelColor=17181C)
@@ -32,7 +32,7 @@ https://github.com/user-attachments/assets/2e6e0f07-e620-4507-a87f-d79e06273169
 
 ## Install
 
-Install DALnow from the [Chrome Web Store](weblink). Then sign in to dal.brightspace.com, click the DALnow icon in your toolbar, and the panel fills itself in.
+Install DALnow from the [Chrome Web Store](https://chromewebstore.google.com/detail/onhhfdaikmocmpfmjlfdmimnblldbibm?utm_source=item-share-cb). Then sign in to dal.brightspace.com, click the DALnow icon in your toolbar, and the panel fills itself in.
 
 ## What it does with your data
 
