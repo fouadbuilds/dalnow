@@ -16,8 +16,12 @@
 
 const BASE = "https://dal.brightspace.com";
 const ALARM_NAME = "DALnow-refresh";
+const SEARCH_ALARM_NAME = "DALnow-search-refresh";
 const REFRESH_MINUTES = 30;
+const SEARCH_REFRESH_MINUTES = 60;
 let reminderCheckInProgress = null;
+let searchIndexRefreshInProgress = null;
+let searchIndexHadUnavailableSource = false;
 
 // ---- version discovery -----------------------------------------------
 
@@ -428,6 +432,228 @@ async function getUnavailableCalendarContentKeys(calendarDeadlines, le) {
   return unavailable;
 }
 
+// ---- universal search index ---------------------------------------------
+
+function safeSearchUrl(value, fallback = null) {
+  const candidate = typeof value === "string" && value.trim() ? value : fallback;
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate, BASE);
+    return url.origin === BASE ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function searchEntry({ id, title, type, url, course }) {
+  if (!id || !url) return null;
+  return {
+    id: String(id),
+    title: typeof title === "string" && title.trim() ? title.trim() : "Untitled item",
+    courseName: course.name || "Untitled course",
+    courseCode: course.code || "",
+    orgUnitId: course.orgUnitId,
+    type,
+    url,
+  };
+}
+
+async function searchSourceGet(path) {
+  let response;
+  try {
+    response = await fetch(`${BASE}${path}`, { credentials: "include" });
+  } catch {
+    searchIndexHadUnavailableSource = true;
+    return null;
+  }
+  if (response.status === 401) throw refreshError("not-signed-in");
+  if (!response.ok) {
+    searchIndexHadUnavailableSource = true;
+    return null;
+  }
+  try {
+    return await response.json();
+  } catch {
+    searchIndexHadUnavailableSource = true;
+    return null;
+  }
+}
+
+async function readSearchSource(read) {
+  try {
+    return await read();
+  } catch (error) {
+    if (error?.outcome === "not-signed-in") throw error;
+    searchIndexHadUnavailableSource = true;
+    return [];
+  }
+}
+
+async function getAllSearchPages(orgUnitId, le, source) {
+  let path = `/d2l/api/le/${le}/${orgUnitId}/${source}/`;
+  const visitedPaths = new Set();
+  const entries = [];
+  while (path) {
+    if (visitedPaths.has(path)) throw refreshError("api-error");
+    visitedPaths.add(path);
+    const page = await searchSourceGet(path);
+    if (page === null) return [];
+    if (Array.isArray(page)) return entries.concat(page);
+    if (!page || !Array.isArray(page.Objects)) throw refreshError("api-error");
+    entries.push(...page.Objects);
+    path = page.Next ? getNextApiPath(page.Next) : null;
+  }
+  return entries;
+}
+
+function flattenContentTopics(modules, topics = []) {
+  for (const module of modules || []) {
+    if (!module || typeof module !== "object") continue;
+    for (const topic of module.Topics || []) topics.push(topic);
+    flattenContentTopics(module.Modules ?? module.SubModules, topics);
+  }
+  return topics;
+}
+
+async function getDropboxSearchEntries(course, le) {
+  return readSearchSource(async () => {
+    const folders = await searchSourceGet(
+      `/d2l/api/le/${le}/${course.orgUnitId}/dropbox/folders/`,
+    );
+    if (!Array.isArray(folders)) return [];
+    return folders
+      .map((folder) => searchEntry({
+        id: `dropbox-${course.orgUnitId}-${folder?.Id}`,
+        title: folder?.Name,
+        type: "assignment",
+        url: safeSearchUrl(
+          `${BASE}/d2l/lms/dropbox/user/folder_submit_files.d2l?ou=${course.orgUnitId}&db=${folder?.Id}`,
+        ),
+        course,
+      }))
+      .filter((item) => item && !item.id.endsWith("-undefined"));
+  });
+}
+
+async function getQuizSearchEntries(course, le) {
+  return readSearchSource(async () => {
+    const quizzes = await getAllSearchPages(course.orgUnitId, le, "quizzes");
+    return quizzes
+      .map((quiz) => {
+        const id = quiz?.QuizId ?? quiz?.Id;
+        return searchEntry({
+          id: `quiz-${course.orgUnitId}-${id}`,
+          title: quiz?.Name ?? quiz?.Title,
+          type: "quiz",
+          url: safeSearchUrl(
+            `${BASE}/d2l/lms/quizzing/user/quiz_summary.d2l?qi=${id}&ou=${course.orgUnitId}`,
+          ),
+          course,
+        });
+      })
+      .filter((item) => item && !item.id.endsWith("-undefined"));
+  });
+}
+
+async function getContentSearchEntries(course, le) {
+  return readSearchSource(async () => {
+    const toc = await searchSourceGet(
+      `/d2l/api/le/${le}/${course.orgUnitId}/content/toc`,
+    );
+    const topics = flattenContentTopics(toc?.Modules);
+    return topics
+      .map((topic) => {
+        const id = topic?.TopicId ?? topic?.Id;
+        return searchEntry({
+          id: `content-${course.orgUnitId}-${id}`,
+          title: topic?.Title ?? topic?.Name,
+          type: "content",
+          url: safeSearchUrl(
+            topic?.Url ?? topic?.URL,
+            `${BASE}/d2l/le/content/${course.orgUnitId}/viewContent/${id}/View`,
+          ),
+          course,
+        });
+      })
+      .filter((item) => item && !item.id.endsWith("-undefined"));
+  });
+}
+
+async function getDiscussionSearchEntries(course, le) {
+  return readSearchSource(async () => {
+    const forums = await searchSourceGet(
+      `/d2l/api/le/${le}/${course.orgUnitId}/discussions/`,
+    );
+    const list = Array.isArray(forums) ? forums : forums?.Objects;
+    if (!Array.isArray(list)) return [];
+    return list
+      .flatMap((forum) => forum?.Topics || [])
+      .map((topic) => {
+        const id = topic?.TopicId ?? topic?.Id;
+        return searchEntry({
+          id: `discussion-${course.orgUnitId}-${id}`,
+          title: topic?.Name ?? topic?.Title,
+          type: "discussion",
+          url: safeSearchUrl(topic?.Url ?? topic?.URL ?? topic?.Link),
+          course,
+        });
+      })
+      .filter((item) => item && !item.id.endsWith("-undefined"));
+  });
+}
+
+async function buildSearchIndex() {
+  const { le } = await getApiVersions();
+  const courses = await getActiveCourses();
+  const perCourse = await Promise.all(
+    courses.map(async (course) => {
+      const [content, assignments, quizzes, discussions] = await Promise.all([
+        getContentSearchEntries(course, le),
+        getDropboxSearchEntries(course, le),
+        getQuizSearchEntries(course, le),
+        getDiscussionSearchEntries(course, le),
+      ]);
+      return [...content, ...assignments, ...quizzes, ...discussions];
+    }),
+  );
+  const unique = new Map();
+  for (const item of perCourse.flat()) unique.set(item.id, item);
+  return [...unique.values()].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function refreshSearchIndexSafely() {
+  if (searchIndexRefreshInProgress) return searchIndexRefreshInProgress;
+  searchIndexRefreshInProgress = (async () => {
+    searchIndexHadUnavailableSource = false;
+    try {
+      const searchIndex = await buildSearchIndex();
+      const finishedAt = new Date().toISOString();
+      const outcome = searchIndexHadUnavailableSource ? "partial" : "success";
+      await chrome.storage.local.set({
+        searchIndex,
+        searchIndexRefreshed: finishedAt,
+        searchIndexStatus: { outcome, finishedAt },
+      });
+      return { ok: true, outcome };
+    } catch (error) {
+      const outcome = ["not-signed-in", "network-error", "api-error"].includes(error?.outcome)
+        ? error.outcome
+        : "api-error";
+      await chrome.storage.local.set({
+        searchIndexStatus: { outcome, finishedAt: new Date().toISOString() },
+      });
+      return { ok: false, outcome };
+    }
+  })().finally(() => {
+    searchIndexRefreshInProgress = null;
+  });
+  return searchIndexRefreshInProgress;
+}
+
+function isSafeSearchResultUrl(value) {
+  return safeSearchUrl(value) === value;
+}
+
 // ---- full refresh ---------------------------------------------------------
 
 async function refreshAll() {
@@ -596,19 +822,32 @@ async function runReminderCheck() {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: REFRESH_MINUTES });
+  chrome.alarms.create(SEARCH_ALARM_NAME, { periodInMinutes: SEARCH_REFRESH_MINUTES });
   refreshSafely();
+  refreshSearchIndexSafely();
+  chrome.commands.getAll().then((commands) => {
+    const shortcut = commands.find((command) => command.name === "toggle-universal-search")?.shortcut;
+    chrome.storage.local.set({ searchShortcutUnassigned: !shortcut });
+  }).catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(() => {
   refreshSafely();
+  refreshSearchIndexSafely();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) refreshSafely();
+  if (alarm.name === SEARCH_ALARM_NAME) refreshSearchIndexSafely();
 });
 
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
+});
+
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command !== "toggle-universal-search" || !tab?.id) return;
+  chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_UNIVERSAL_SEARCH" }).catch(() => {});
 });
 
 // Let the side panel ask for an immediate refresh (e.g. a manual "refresh" button).
@@ -619,6 +858,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg?.type === "REMINDERS_UPDATED") {
     checkDueReminders().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg?.type === "GET_SEARCH_INDEX") {
+    chrome.storage.local.get([
+      "searchIndex",
+      "searchIndexRefreshed",
+      "searchIndexStatus",
+      "courseOverrides",
+    ]).then((stored) => {
+      sendResponse({
+        searchIndex: Array.isArray(stored.searchIndex) ? stored.searchIndex : [],
+        searchIndexRefreshed: stored.searchIndexRefreshed || null,
+        status: stored.searchIndexStatus?.outcome || "preparing",
+        courseOverrides: stored.courseOverrides || {},
+      });
+    }).catch(() => sendResponse({ searchIndex: [], searchIndexRefreshed: null, status: "api-error" }));
+    return true;
+  }
+  if (msg?.type === "REBUILD_SEARCH_INDEX") {
+    refreshSearchIndexSafely().then(sendResponse);
+    return true;
+  }
+  if (msg?.type === "OPEN_SEARCH_RESULT") {
+    const url = typeof msg.url === "string" ? msg.url : "";
+    if (!isSafeSearchResultUrl(url)) {
+      sendResponse({ ok: false });
+      return;
+    }
+    chrome.tabs.create({ url }).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
     return true;
   }
 });

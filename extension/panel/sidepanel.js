@@ -23,6 +23,8 @@ const backgroundAppsGuide = document.getElementById("backgroundAppsGuide");
 const reportBugBtn = document.getElementById("reportBugBtn");
 const commonIssuesHelpBtn = document.getElementById("commonIssuesHelpBtn");
 const commonIssuesHelp = document.getElementById("commonIssuesHelp");
+const rebuildSearchIndexBtn = document.getElementById("rebuildSearchIndexBtn");
+const searchIndexStatusEl = document.getElementById("searchIndexStatus");
 
 const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
 const TYPE_ORDER = ["assignment", "quiz", "lab", "discussion", "content"];
@@ -946,6 +948,9 @@ async function load() {
     "themePreference",
     "reminderSettings",
     "courseOverrides",
+    "searchIndexStatus",
+    "searchIndexRefreshed",
+    "searchShortcutUnassigned",
   ]);
   cachedDeadlines = stored.deadlines || [];
   cachedCourses = stored.courses || deriveCourses(cachedDeadlines);
@@ -961,6 +966,24 @@ async function load() {
   renderFilters();
   render(cachedDeadlines, stored.lastRefreshed, stored.lastError, liveStatus);
   renderReminderSettings();
+  renderSearchIndexStatus(stored);
+}
+
+function renderSearchIndexStatus(stored) {
+  const outcome = stored.searchIndexStatus?.outcome;
+  if ((outcome === "success" || outcome === "partial") && stored.searchIndexRefreshed) {
+    const partialNote = outcome === "partial" ? " Some course tools were unavailable." : "";
+    searchIndexStatusEl.textContent = `Last indexed ${new Date(stored.searchIndexRefreshed).toLocaleString()}.${partialNote}`;
+  } else if (outcome === "not-signed-in") {
+    searchIndexStatusEl.textContent = "Sign in to Brightspace, then rebuild the index.";
+  } else if (outcome) {
+    searchIndexStatusEl.textContent = "Could not rebuild. Your previous search index is still available.";
+  } else {
+    searchIndexStatusEl.textContent = "Your search index is being prepared.";
+  }
+  if (stored.searchShortcutUnassigned) {
+    searchIndexStatusEl.textContent += " Alt+K is unassigned; set it in chrome://extensions/shortcuts.";
+  }
 }
 
 function deriveCourses(deadlines) {
@@ -994,7 +1017,22 @@ async function refreshNow() {
   }
 }
 
+async function rebuildSearchIndex() {
+  rebuildSearchIndexBtn.disabled = true;
+  searchIndexStatusEl.textContent = "Rebuilding search index…";
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "REBUILD_SEARCH_INDEX" });
+    if (!result?.ok) throw new Error("Search index rebuild failed");
+  } catch {
+    searchIndexStatusEl.textContent = "Could not rebuild. Your previous search index is still available.";
+  } finally {
+    rebuildSearchIndexBtn.disabled = false;
+    await load();
+  }
+}
+
 refreshBtn.addEventListener("click", refreshNow);
+rebuildSearchIndexBtn.addEventListener("click", rebuildSearchIndex);
 
 settingsBtn.addEventListener("click", openSettings);
 backBtn.addEventListener("click", closeSettings);
@@ -1028,7 +1066,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
     changes.courses ||
     changes.itemState ||
     changes.reminderSettings ||
-    changes.courseOverrides
+    changes.courseOverrides ||
+    changes.searchIndexStatus ||
+    changes.searchIndexRefreshed ||
+    changes.searchShortcutUnassigned
   ) {
     if (changes.deadlines && !changes.deadlines.newValue) {
       activeCourseFilter = "all";

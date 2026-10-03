@@ -9,6 +9,27 @@
   "background": {
     "service_worker": "src/background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://dal.brightspace.com/*"],
+      "js": ["src/fuse.basic.min.js", "src/universal-search.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/DM-Sans-latin.woff2"],
+      "matches": ["https://dal.brightspace.com/*"]
+    }
+  ],
+  "commands": {
+    "toggle-universal-search": {
+      "suggested_key": {
+        "default": "Alt+K",
+        "mac": "Option+K"
+      },
+      "description": "Open DALnow universal search"
+    }
+  },
   "side_panel": {
     "default_path": "panel/sidepanel.html"
   },

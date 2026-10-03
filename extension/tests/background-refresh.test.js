@@ -115,6 +115,14 @@ function createWorker(dropboxStatus, enrollmentStatus = 200, calendarStatus = 20
         create() {},
         onAlarm: { addListener: (listener) => { listeners.alarm = listener; } },
       },
+      commands: {
+        getAll: async () => [],
+        onCommand: { addListener: (listener) => { listeners.command = listener; } },
+      },
+      tabs: {
+        create: async () => {},
+        sendMessage: async () => {},
+      },
       notifications: { create: async () => {} },
       sidePanel: { open: async () => {} },
       action: { onClicked: { addListener: (listener) => { listeners.action = listener; } } },
