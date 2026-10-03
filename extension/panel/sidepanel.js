@@ -601,11 +601,13 @@ function addGroup(parent, label, items, boundaries) {
 function render(deadlines, _lastRefreshed, lastError, status = liveStatus) {
   if (deadlines !== undefined) cachedDeadlines = deadlines || [];
   listEl.replaceChildren();
-  statusEl.textContent = status?.outcome === "partial"
-    ? "Some course tools were unavailable. Showing everything DALnow could read."
-    : lastError
-      ? "Couldn't reach Brightspace. Showing your last saved deadlines."
-      : "";
+  statusEl.textContent =
+    status?.outcome === "partial"
+      ? ""
+      // not all api reads are partial, it still keeps coming back even though its not necessary
+      : lastError
+        ? "Couldn't reach Brightspace. Showing your last saved deadlines."
+        : "";
   const isSignedOutEmpty =
     cachedDeadlines.length === 0 && status?.outcome === "not-signed-in";
   summaryEl.hidden = isSignedOutEmpty;
@@ -971,18 +973,25 @@ async function load() {
 
 function renderSearchIndexStatus(stored) {
   const outcome = stored.searchIndexStatus?.outcome;
-  if ((outcome === "success" || outcome === "partial") && stored.searchIndexRefreshed) {
-    const partialNote = outcome === "partial" ? " Some course tools were unavailable." : "";
+  if (
+    (outcome === "success" || outcome === "partial") &&
+    stored.searchIndexRefreshed
+  ) {
+    const partialNote =
+      outcome === "partial" ? " Some course tools were unavailable." : "";
     searchIndexStatusEl.textContent = `Last indexed ${new Date(stored.searchIndexRefreshed).toLocaleString()}.${partialNote}`;
   } else if (outcome === "not-signed-in") {
-    searchIndexStatusEl.textContent = "Sign in to Brightspace, then rebuild the index.";
+    searchIndexStatusEl.textContent =
+      "Sign in to Brightspace, then rebuild the index.";
   } else if (outcome) {
-    searchIndexStatusEl.textContent = "Could not rebuild. Your previous search index is still available.";
+    searchIndexStatusEl.textContent =
+      "Could not rebuild. Your previous search index is still available.";
   } else {
     searchIndexStatusEl.textContent = "Your search index is being prepared.";
   }
   if (stored.searchShortcutUnassigned) {
-    searchIndexStatusEl.textContent += " Alt+K is unassigned; set it in chrome://extensions/shortcuts.";
+    searchIndexStatusEl.textContent +=
+      " Alt+K is unassigned; set it in chrome://extensions/shortcuts.";
   }
 }
 
@@ -1021,10 +1030,13 @@ async function rebuildSearchIndex() {
   rebuildSearchIndexBtn.disabled = true;
   searchIndexStatusEl.textContent = "Rebuilding search index…";
   try {
-    const result = await chrome.runtime.sendMessage({ type: "REBUILD_SEARCH_INDEX" });
+    const result = await chrome.runtime.sendMessage({
+      type: "REBUILD_SEARCH_INDEX",
+    });
     if (!result?.ok) throw new Error("Search index rebuild failed");
   } catch {
-    searchIndexStatusEl.textContent = "Could not rebuild. Your previous search index is still available.";
+    searchIndexStatusEl.textContent =
+      "Could not rebuild. Your previous search index is still available.";
   } finally {
     rebuildSearchIndexBtn.disabled = false;
     await load();

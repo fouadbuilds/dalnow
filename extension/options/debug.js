@@ -28,7 +28,7 @@ function summaryFor(outcome, counts) {
     return `Read ${counts.courses} courses and ${counts.deadlines} deadlines.`;
   }
   if (outcome === "partial" && counts) {
-    return `Read ${counts.courses} courses and ${counts.deadlines} deadlines. Some course tools could not be read.`;
+    return `Read ${counts.courses} courses and ${counts.deadlines} deadlines. $Some course tools could not be read.`;
   }
   if (outcome === "not-signed-in") return "Brightspace was not signed in.";
   return "DALnow could not complete the last read.";
