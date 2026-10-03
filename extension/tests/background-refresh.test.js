@@ -45,7 +45,13 @@ function response(status, body = null) {
   };
 }
 
-function createWorker(dropboxStatus, enrollmentStatus = 200, calendarStatus = 200) {
+function createWorker(
+  dropboxStatus,
+  enrollmentStatus = 200,
+  calendarStatus = 200,
+  tocStatus = 200,
+  includeCalendarContent = false,
+) {
   const stored = {};
   const listeners = {};
   const context = vm.createContext({
@@ -88,7 +94,21 @@ function createWorker(dropboxStatus, enrollmentStatus = 200, calendarStatus = 20
         return response(200, []);
       }
       if (pathname.endsWith("/calendar/events/myEvents/")) {
-        return response(calendarStatus, { Objects: [], Next: null });
+        return response(calendarStatus, {
+          Objects: includeCalendarContent
+            ? [{
+              OrgUnitId: 202,
+              StartDateTime: "2030-01-02T17:00:00.000Z",
+              Title: "Visible calendar item",
+              CalendarEventId: 10,
+              AssociatedEntity: { AssociatedEntityId: 9 },
+            }]
+            : [],
+          Next: null,
+        });
+      }
+      if (pathname.endsWith("/content/toc")) {
+        return response(tocStatus, { Modules: [] });
       }
       throw new Error(`Unexpected request: ${pathname}`);
     },
@@ -173,6 +193,14 @@ async function expectCalendarFailure() {
   assert.equal(worker.stored.deadlines.length, 1);
 }
 
+async function expectOptionalTocFailureDoesNotMarkDeadlineReadPartial() {
+  const worker = createWorker(200, 200, 200, 404, true);
+  const result = await worker.refresh();
+  assert.equal(result.outcome, "success");
+  assert.equal(worker.stored.lastError, null);
+  assert.ok(worker.stored.deadlines.some((item) => item.title === "Visible calendar item"));
+}
+
 function testPartialDebugSerialization() {
   const elements = new Map(
     ["debugOutput", "lastLiveRead", "copyDebugBtn", "copyStatus"].map((id) => [
@@ -228,6 +256,7 @@ async function main() {
   await expectSignedOutBeforeCourses(401);
   await expectSignedOutBeforeCourses(403);
   await expectCalendarFailure();
+  await expectOptionalTocFailureDoesNotMarkDeadlineReadPartial();
   testPartialDebugSerialization();
   console.log("background refresh classification tests passed");
 }

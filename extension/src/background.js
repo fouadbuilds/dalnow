@@ -90,13 +90,15 @@ async function getApiVersions() {
 
 async function apiGet(path, endpoint = path, scope = "account") {
   const startedAt = Date.now();
+  const isCourseSource = scope === "course" || scope === "optional-course";
+  const affectsDeadlineCompleteness = scope === "course";
   let res;
   try {
     res = await fetch(`${BASE}${path}`, { credentials: "include" });
   } catch {
     recordRequest(endpoint, null, startedAt);
-    if (scope === "course") {
-      hasUnavailableCourseSource = true;
+    if (isCourseSource) {
+      if (affectsDeadlineCompleteness) hasUnavailableCourseSource = true;
       throw refreshError("source-unavailable");
     }
     throw refreshError("network-error");
@@ -106,8 +108,8 @@ async function apiGet(path, endpoint = path, scope = "account") {
     throw refreshError("not-signed-in");
   }
   if (!res.ok) {
-    if (scope === "course") {
-      hasUnavailableCourseSource = true;
+    if (isCourseSource) {
+      if (affectsDeadlineCompleteness) hasUnavailableCourseSource = true;
       throw refreshError("source-unavailable");
     }
     throw refreshError("api-error");
@@ -115,8 +117,8 @@ async function apiGet(path, endpoint = path, scope = "account") {
   try {
     return await res.json();
   } catch {
-    if (scope === "course") {
-      hasUnavailableCourseSource = true;
+    if (isCourseSource) {
+      if (affectsDeadlineCompleteness) hasUnavailableCourseSource = true;
       throw refreshError("source-unavailable");
     }
     throw refreshError("api-error");
@@ -409,7 +411,7 @@ async function getUnavailableCalendarContentKeys(calendarDeadlines, le) {
         const toc = await apiGet(
           `/d2l/api/le/${le}/${courseId}/content/toc`,
           endpoint,
-          "course",
+          "optional-course",
         );
         const topics = (toc?.Modules || []).flatMap(
           (module) => module?.Topics || [],
