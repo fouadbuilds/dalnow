@@ -13,7 +13,7 @@ const ENDPOINTS = new Set([
   "/d2l/api/le/{v}/calendar/events/myEvents/",
   "/d2l/api/le/{v}/{orgUnitId}/content/toc",
 ]);
-const OUTCOMES = new Set(["success", "not-signed-in", "network-error", "api-error"]);
+const OUTCOMES = new Set(["success", "partial", "not-signed-in", "network-error", "api-error"]);
 
 function safeNumber(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -26,6 +26,9 @@ function safeTimestamp(value) {
 function summaryFor(outcome, counts) {
   if (outcome === "success" && counts) {
     return `Read ${counts.courses} courses and ${counts.deadlines} deadlines.`;
+  }
+  if (outcome === "partial" && counts) {
+    return `Read ${counts.courses} courses and ${counts.deadlines} deadlines. Some course tools could not be read.`;
   }
   if (outcome === "not-signed-in") return "Brightspace was not signed in.";
   return "DALnow could not complete the last read.";

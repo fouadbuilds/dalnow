@@ -21,6 +21,8 @@ const backgroundAppsGuideBtn = document.getElementById(
 );
 const backgroundAppsGuide = document.getElementById("backgroundAppsGuide");
 const reportBugBtn = document.getElementById("reportBugBtn");
+const commonIssuesHelpBtn = document.getElementById("commonIssuesHelpBtn");
+const commonIssuesHelp = document.getElementById("commonIssuesHelp");
 
 const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
 const TYPE_ORDER = ["assignment", "quiz", "lab", "discussion", "content"];
@@ -597,9 +599,11 @@ function addGroup(parent, label, items, boundaries) {
 function render(deadlines, _lastRefreshed, lastError, status = liveStatus) {
   if (deadlines !== undefined) cachedDeadlines = deadlines || [];
   listEl.replaceChildren();
-  statusEl.textContent = lastError
-    ? "Couldn't reach Brightspace. Showing your last saved deadlines."
-    : "";
+  statusEl.textContent = status?.outcome === "partial"
+    ? "Some course tools were unavailable. Showing everything DALnow could read."
+    : lastError
+      ? "Couldn't reach Brightspace. Showing your last saved deadlines."
+      : "";
   const isSignedOutEmpty =
     cachedDeadlines.length === 0 && status?.outcome === "not-signed-in";
   summaryEl.hidden = isSignedOutEmpty;
@@ -1005,6 +1009,11 @@ backgroundAppsGuideBtn.addEventListener("click", () => {
     backgroundAppsGuideBtn.getAttribute("aria-expanded") === "true";
   backgroundAppsGuideBtn.setAttribute("aria-expanded", String(!expanded));
   backgroundAppsGuide.hidden = expanded;
+});
+commonIssuesHelpBtn.addEventListener("click", () => {
+  const expanded = commonIssuesHelpBtn.getAttribute("aria-expanded") === "true";
+  commonIssuesHelpBtn.setAttribute("aria-expanded", String(!expanded));
+  commonIssuesHelp.hidden = expanded;
 });
 reportBugBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
 

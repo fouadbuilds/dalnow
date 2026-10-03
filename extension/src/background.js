@@ -24,6 +24,7 @@ let reminderCheckInProgress = null;
 let cachedVersions = null;
 const DEBUG_REQUEST_LIMIT = 50;
 let currentDebug = null;
+let hasUnavailableCourseSource = false;
 
 function refreshError(outcome) {
   const error = new Error(outcome);
@@ -33,6 +34,7 @@ function refreshError(outcome) {
 
 function startDebug() {
   currentDebug = { startedAt: new Date().toISOString(), requests: [], failedRequests: 0 };
+  hasUnavailableCourseSource = false;
 }
 
 function recordRequest(endpoint, status, startedAt) {
@@ -45,6 +47,8 @@ function safeLiveStatus(outcome, counts = null) {
   const finishedAt = new Date().toISOString();
   const message = outcome === "success"
     ? `Read ${counts.courses} courses and ${counts.deadlines} deadlines.`
+    : outcome === "partial"
+      ? `Read ${counts.courses} courses and ${counts.deadlines} deadlines. Some course tools could not be read.`
     : outcome === "not-signed-in"
       ? "Brightspace was not signed in."
       : "DALnow could not complete the last read.";
@@ -80,23 +84,39 @@ async function getApiVersions() {
 
 // ---- low-level fetch helper --------------------------------------------
 
-async function apiGet(path, endpoint = path) {
+async function apiGet(path, endpoint = path, scope = "account") {
   const startedAt = Date.now();
   let res;
   try {
     res = await fetch(`${BASE}${path}`, { credentials: "include" });
   } catch {
     recordRequest(endpoint, null, startedAt);
+    if (scope === "course") {
+      hasUnavailableCourseSource = true;
+      throw refreshError("source-unavailable");
+    }
     throw refreshError("network-error");
   }
   recordRequest(endpoint, res.status, startedAt);
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401 || (scope === "account" && res.status === 403)) {
     throw refreshError("not-signed-in");
   }
   if (!res.ok) {
+    if (scope === "course") {
+      hasUnavailableCourseSource = true;
+      throw refreshError("source-unavailable");
+    }
     throw refreshError("api-error");
   }
-  try { return await res.json(); } catch { throw refreshError("api-error"); }
+  try {
+    return await res.json();
+  } catch {
+    if (scope === "course") {
+      hasUnavailableCourseSource = true;
+      throw refreshError("source-unavailable");
+    }
+    throw refreshError("api-error");
+  }
 }
 
 // ---- course discovery ---------------------------------------------------
@@ -127,7 +147,7 @@ async function getActiveCourses() {
 async function getDropboxDeadlines(orgUnitId, le) {
   let folders;
   try {
-    folders = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/dropbox/folders/`, "/d2l/api/le/{v}/{orgUnitId}/dropbox/folders/");
+    folders = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/dropbox/folders/`, "/d2l/api/le/{v}/{orgUnitId}/dropbox/folders/", "course");
   } catch (e) {
     if (e?.outcome === "not-signed-in") throw e;
     return []; // course may have dropbox disabled entirely, hopefully not
@@ -239,7 +259,7 @@ async function getAllQuizPages(orgUnitId, le) {
     if (visitedPaths.has(path)) throw refreshError("api-error");
     visitedPaths.add(path);
 
-    const page = await apiGet(path, endpoint);
+    const page = await apiGet(path, endpoint, "course");
     if (Array.isArray(page)) return page; // compatibility with older tenants
     if (!page || !Array.isArray(page.Objects)) throw refreshError("api-error");
 
@@ -252,7 +272,7 @@ async function getAllQuizPages(orgUnitId, le) {
 async function getDiscussionDeadlines(orgUnitId, le) {
   let topics;
   try {
-    const forums = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/discussions/`, "/d2l/api/le/{v}/{orgUnitId}/discussions/");
+    const forums = await apiGet(`/d2l/api/le/${le}/${orgUnitId}/discussions/`, "/d2l/api/le/{v}/{orgUnitId}/discussions/", "course");
     // Discussion response shape + per-item deep-link pattern are UNVERIFIED
     // (current courses don't use discussions, so never confirmed live).
     // Keep the fetch — future courses might use it — but fall back to the
@@ -320,7 +340,7 @@ async function getCalendarDeadlines(courses, le, existingItems) {
     while (path) {
       if (visitedPaths.has(path)) throw refreshError("api-error");
       visitedPaths.add(path);
-      const page = await apiGet(path, endpoint);
+      const page = await apiGet(path, endpoint, "course");
       if (!page || !Array.isArray(page.Objects)) throw refreshError("api-error");
 
       for (const event of page.Objects) {
@@ -385,6 +405,7 @@ async function getUnavailableCalendarContentKeys(calendarDeadlines, le) {
         const toc = await apiGet(
           `/d2l/api/le/${le}/${courseId}/content/toc`,
           endpoint,
+          "course",
         );
         const topics = (toc?.Modules || []).flatMap(
           (module) => module?.Topics || [],
@@ -473,7 +494,8 @@ async function refreshSafely() {
   let status;
   try {
     const { deadlines, courses } = await refreshAll();
-    status = safeLiveStatus("success", { deadlines: deadlines.length, courses: courses.length });
+    const outcome = hasUnavailableCourseSource ? "partial" : "success";
+    status = safeLiveStatus(outcome, { deadlines: deadlines.length, courses: courses.length });
     await chrome.storage.local.set({ deadlines, courses, lastRefreshed: status.liveStatus.finishedAt, lastError: null, ...status });
   } catch (err) {
     const outcome = ["not-signed-in", "network-error", "api-error"].includes(err?.outcome) ? err.outcome : "api-error";
@@ -592,7 +614,7 @@ chrome.action.onClicked.addListener((tab) => {
 // Let the side panel ask for an immediate refresh (e.g. a manual "refresh" button).
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "REFRESH_NOW") {
-    refreshSafely().then((status) => sendResponse({ ok: status.outcome === "success", outcome: status.outcome }));
+    refreshSafely().then((status) => sendResponse({ ok: status.outcome === "success" || status.outcome === "partial", outcome: status.outcome }));
     return true; // keep the message channel open for the async response
   }
   if (msg?.type === "REMINDERS_UPDATED") {

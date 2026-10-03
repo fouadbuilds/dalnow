@@ -83,7 +83,20 @@
       <h2 id="reportHeading" class="section-title">Report a bug</h2>
       <p class="data-copy">Send the debug report via Instagram @fouaden_ and he might buy you a Subway :&#41;</p>
       <p class="data-copy">Your Brightspace info is not in the report.</p>
-      <button id="reportBugBtn" class="report-bug-button" type="button">View debug report</button>
+      <div class="report-actions">
+        <button id="reportBugBtn" class="report-bug-button" type="button">View debug report</button>
+        <button id="commonIssuesHelpBtn" class="inline-link" type="button" aria-expanded="false">Help with common issues</button>
+      </div>
+      <div id="commonIssuesHelp" class="support-tip" hidden>
+        <h3>Having trouble with DALnow?</h3>
+        <ol>
+          <li>Sign in directly at dal.brightspace.com in the same normal browser profile, refresh that page, then select DALnow’s Refresh button.</li>
+          <li>Do not use Guest or Incognito mode. Ensure the extension has site access to dal.brightspace.com.</li>
+          <li>In privacy-focused browsers, allow DALnow/Brightspace site access or the Brightspace session cookie if sign-in is repeatedly not detected.</li>
+          <li>Some courses may disable individual Brightspace tools. DALnow will still load deadlines it can access from the rest of your courses.</li>
+          <li>If it still does not work, select View debug report, copy the report, and send it to support.</li>
+        </ol>
+      </div>
     </section>
 
     <footer class="settings-footer">

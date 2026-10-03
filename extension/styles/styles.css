@@ -722,6 +722,12 @@ a:focus-visible {
     transform var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out);
 }
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
 .report-bug-button:hover,
 .primary-action:hover,
 .secondary-action:hover,
